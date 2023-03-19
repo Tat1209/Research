@@ -1,7 +1,7 @@
 import glob
 # プログラムで利用する各種パッケージの定義です
 import os
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 import csv
 from pathlib import Path
@@ -9,18 +9,16 @@ from datetime import datetime
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+
 import tensorflow as tf
 from keras.utils import plot_model
 from keras.layers import Conv2D, MaxPool2D, Dense, Flatten, ReLU, Softmax
 
-# 画像データ格納ディレクトリを指定
-# browse_dir = "./competition01_gray_128x128/"
-browse_dir = "./aurora/competition01_gray_128x128/"
-
 # 訓練・検証データが格納されているフォルダを指定します
-train_val_dir = browse_dir + "train_val"
+train_val_dir = "competition01_gray_128x128/train_val"
+
 # テストデータが格納されているフォルダを指定します
-test_dir = browse_dir + "test"
+test_dir = "competition01_gray_128x128/test"
 
 # 画像のサイズ (横幅) 単位：ピクセル
 IMG_WIDTH = 128
@@ -35,7 +33,6 @@ classes = 4
 #   aurora: 0, clearsky: 1, cloud: 2, milkyway: 3
 class_names = ["aurora", "clearsky", "cloud", "milkyway"]
 
-
 ###################################################################################
 # こちらの項目は「ハイパーパラメータ」と呼ばれる項目になります
 # 値を変更してモデルの精度を向上させてみましょう！
@@ -44,7 +41,7 @@ class_names = ["aurora", "clearsky", "cloud", "milkyway"]
 batch_size = 256
 
 # エポック数 (学習を何回実施するか？という変数)
-epochs = 5
+epochs = 1
 
 # 学習率 (重みをどの程度変更するか？)
 learning_rate = 0.001
@@ -181,18 +178,18 @@ with open('competition_result_{}.csv'.format(datetime.now().strftime("%m%d_%H%M%
             np.argmax(item)  # モデルが予測した画像のクラス (aurora: 0, clearsky: 1, cloud: 2, milkyway: 3)
         ])
         
-# 2,128枚のテストデータがあるので，「0～2127」までで，画像の番号を選択する
-#  img_num = 0 ～ img_num = 2127 までで好きな値を設定してみて下さい
-img_num = 0
+# # 2,128枚のテストデータがあるので，「0～2127」までで，画像の番号を選択する
+# #  img_num = 0 ～ img_num = 2127 までで好きな値を設定してみて下さい
+# img_num = 0
 
-# テスト画像を読み込む
-test_img = preprocess_test_img(test_files[img_num])[0]
+# # テスト画像を読み込む
+# test_img = preprocess_test_img(test_files[img_num])[0]
 
-# 画像を出力部分に表示します
-plt.figure()
-plt.imshow(test_img)
-plt.show()
+# # 画像を出力部分に表示します
+# plt.figure()
+# plt.imshow(test_img)
+# plt.show()
 
-# 画像の分類を実施して，結果を表示します
-output = model.predict(np.expand_dims(test_img, axis=0)).argmax()
-print("AIの予測結果 (数値)：{}, 予測結果:{}".format(output, class_names[output]))
+# # 画像の分類を実施して，結果を表示します
+# output = model.predict(np.expand_dims(test_img, axis=0)).argmax()
+# print("AIの予測結果 (数値)：{}, 予測結果:{}".format(output, class_names[output]))
