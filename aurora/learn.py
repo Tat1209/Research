@@ -14,73 +14,30 @@ import tensorflow as tf
 from keras.utils import plot_model
 from keras.layers import Conv2D, MaxPool2D, Dense, Flatten, ReLU, Softmax
 
-# 訓練・検証データが格納されているフォルダを指定します
-train_val_dir = "competition01_gray_128x128/train_val"
+import preparation as pr
 
-# テストデータが格納されているフォルダを指定します
-test_dir = "competition01_gray_128x128/test"
+source_dir = "./aurora/competition01_gray_128x128/"
 
-# 画像のサイズ (横幅) 単位：ピクセル
-IMG_WIDTH = 128
-# 画像のサイズ (縦幅) 単位：ピクセル
-IMG_HEIGHT = 85
-
-# 今回は4種類に分類を行います (classesには「4」が入る)
-#   aurora, clearsky, cloud, milkyway
-classes = 4
-
-# モデルが出力する分類結果 (数値)と，名前を紐づける
-#   aurora: 0, clearsky: 1, cloud: 2, milkyway: 3
+train_val_dir = source_dir + "train_val"      # 訓練・検証データが格納されているフォルダを指定します
 class_names = ["aurora", "clearsky", "cloud", "milkyway"]
 
-###################################################################################
-# こちらの項目は「ハイパーパラメータ」と呼ばれる項目になります
-# 値を変更してモデルの精度を向上させてみましょう！
-###################################################################################
-# バッチサイズ (並列して学習を実施する数)
+test_dir = source_dir + "test"                # テストデータが格納されているフォルダを指定します
+
+
 batch_size = 256
+num_train = 800         # ここでは訓練データを 800枚 としているので，残り(400枚) は検証データとなる
+shape = (85, 128, 3)    # 高さ、幅、RGB
+
+IMG_HEIGHT, IMG_WIDTH, _ = shape
+
+ds_train, ds_val = pr.dir2data(train_val_dir, class_names, batch_size, num_train, shape)
+
 
 # エポック数 (学習を何回実施するか？という変数)
 epochs = 1
 
 # 学習率 (重みをどの程度変更するか？)
 learning_rate = 0.001
-               
-# 訓練・検証データ画像が 1,200 枚あるので，これを訓練データと検証データに分割する
-#  ここでは訓練データを 800枚 としているので，残り(400枚) は検証データとなる
-num_train = 800
-
-
-# 画像データのサイズ変更と，画素値の正規化を実施する
-#   正規化：0～255 → 0.0～1.0
-def normalize_img(img, label):
-    # 画像のデータ型を浮動小数点型に変換する (32bitの浮動小数点)
-    img = tf.cast(img, tf.float32) / 255.0
-    # 画像のリサイズ
-    img = tf.image.resize(img, [IMG_HEIGHT, IMG_WIDTH])
-    # 正規化した画素値と，画像の正解ラベルを返す
-    return img, label
-
-
-# 訓練・検証データを読み込む
-ds_train_val = tf.keras.utils.image_dataset_from_directory(
-    train_val_dir,
-    class_names=class_names,
-    seed=0,
-    batch_size=None
-)
-
-# 訓練データの準備
-ds_train = ds_train_val.take(num_train)
-ds_train = ds_train.map(normalize_img, num_parallel_calls=tf.data.AUTOTUNE)
-ds_train = ds_train.batch(batch_size)
-ds_train = ds_train.prefetch(tf.data.AUTOTUNE)
-
-# 検証データの準備
-ds_val = ds_train_val.skip(num_train)
-ds_val = ds_val.map(normalize_img, num_parallel_calls=tf.data.AUTOTUNE)
-ds_val = ds_val.batch(batch_size)
-ds_val = ds_val.prefetch(tf.data.AUTOTUNE)
 
 # モデルの構築
 #  この「model」という変数に，構築するモデルのすべての情報が入ります
@@ -105,7 +62,7 @@ model.add(MaxPool2D(2))
 
 # 分類器 (こちらは編集しない！)
 model.add(Flatten())
-model.add(Dense(classes))
+model.add(Dense(len(class_names)))
 model.add(Softmax())
 
 
