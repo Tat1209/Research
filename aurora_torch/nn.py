@@ -16,14 +16,15 @@ class NeuralNet(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
             nn.Flatten(),
+            nn.Linear(64*21*21, 4)
         )
-        self.classfier = None
+        # self.classfier = None
         
 
     def forward(self, x):
         x = self.net(x)
-        if self.classfier is None: self.classfier = nn.Linear(in_features=x.shape[-1], out_features=self.classes).to(self.device)
-        x = self.classfier(x)
+        # if self.classfier is None: self.classfier = nn.Linear(in_features=x.shape[-1], out_features=self.classes).to(self.device)
+        # x = self.classfier(x)
         return x
     
 

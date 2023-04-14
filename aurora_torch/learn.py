@@ -9,7 +9,7 @@ data_path = {"train_val":data_dir+"train_val", "test":data_dir+"test"}
 class_names = ["aurora", "clearsky", "cloud", "milkyway"]
 
 batch_size = 128        # バッチサイズ (並列して学習を実施する数)  
-epochs = 300              # エポック数 (学習を何回実施するか？という変数)
+epochs = 800              # エポック数 (学習を何回実施するか？という変数)
 learning_rate = 0.0002   # 学習率 (重みをどの程度変更するか？)
 # num_train = 1200         # 訓練データの枚数(n/1200)
 # shape = (85, 85)
