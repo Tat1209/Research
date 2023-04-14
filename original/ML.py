@@ -15,10 +15,10 @@ from keras.utils import plot_model
 from keras.layers import Conv2D, MaxPool2D, Dense, Flatten, ReLU, Softmax
 
 # 訓練・検証データが格納されているフォルダを指定します
-train_val_dir = "competition01_gray_128x128/train_val"
+train_val_dir = "aurora/competition01_gray_128x128/train_val"
 
 # テストデータが格納されているフォルダを指定します
-test_dir = "competition01_gray_128x128/test"
+test_dir = "aurora/competition01_gray_128x128/test"
 
 # 画像のサイズ (横幅) 単位：ピクセル
 IMG_WIDTH = 128
@@ -41,7 +41,7 @@ class_names = ["aurora", "clearsky", "cloud", "milkyway"]
 batch_size = 256
 
 # エポック数 (学習を何回実施するか？という変数)
-epochs = 1
+epochs = 5
 
 # 学習率 (重みをどの程度変更するか？)
 learning_rate = 0.001
@@ -188,7 +188,8 @@ test_img = preprocess_test_img(test_files[img_num])[0]
 # 画像を出力部分に表示します
 plt.figure()
 plt.imshow(test_img)
-plt.show()
+# plt.show()
+plt.savefig("out.jpg")
 
 # 画像の分類を実施して，結果を表示します
 output = model.predict(np.expand_dims(test_img, axis=0)).argmax()
