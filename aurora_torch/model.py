@@ -44,35 +44,3 @@ class Model:
         if categorize: results = np.argmax(results, axis=1)  # モデルが予測した画像のクラス (aurora: 0, clearsky: 1, cloud: 2, milkyway: 3)
         return results
 
-
-
-
-
-"""
-            # shape = (N, 3, 85, 85)
-            nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, padding=1),
-            # shape = (N, 32, 85, 85)
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2),
-            # shape = (N, 32, 42, 42)
-            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1),
-            # shape = (N, 64, 42, 42)
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2),
-            # shape = (N, 64, 21, 21)
-            # nn.Flatten(),
-            # # shape = (N, 64 * 21 * 21)
-            # nn.Linear(64 * 21 * 21, 4096),
-            # # shape = (N, 4096)
-            # nn.ReLU(),
-            # nn.Linear(4096, 1000),
-            # # shape = (N, 1000)
-            # nn.ReLU(),
-            # nn.Linear(1000, 4)
-            # # shape = (N, 4)
-            nn.AdaptiveAvgPool2d(5),
-            # shape = (N, 64, 5, 5)
-            nn.Flatten(),
-            # shape = (N, 64 * 5 * 5)
-            nn.Linear(64 * 5 * 5, 4),
-"""

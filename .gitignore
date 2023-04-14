@@ -1,4 +1,5 @@
 *.jpg
 *.pyc
 *.h5
+*.pth
 *.csv
