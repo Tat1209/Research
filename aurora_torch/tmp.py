@@ -1,6 +1,8 @@
 from PIL import Image
 from PIL import ImageDraw
 from torchvision import transforms
+from torchvision.transforms import InterpolationMode
+
 
 
 img_path = "/root/app/aurora/competition01_gray_128x128/test/c01_20070404213027.jpg"
@@ -19,6 +21,11 @@ transform = transforms.Compose([
     transforms.Resize((85, 85)),
     transforms.Lambda(blacken_region(0, 0, 24, 5)),
     transforms.Lambda(blacken_region(85-24, 0, 85-1, 5)),
+    # transforms.RandomRotation(degrees=(0, 360), interpolation=InterpolationMode.BILINEAR),
+    # transforms.RandomRotation(degrees=(10, 10), interpolation=InterpolationMode.NEAREST),
+    # transforms.RandomRotation(degrees=(10, 10), interpolation=InterpolationMode.BILINEAR),
+    transforms.RandomRotation(degrees=(10, 10), interpolation=InterpolationMode.BICUBIC),
+    # transforms.RandomHorizontalFlip(p=0.5), 
     transforms.ToTensor(), 
 ])
 

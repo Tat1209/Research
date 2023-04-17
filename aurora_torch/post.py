@@ -16,11 +16,7 @@ def postprocess(dl_test, result, model):
     with open('competition_result_{}.csv'.format(datetime.now().strftime("%m%d_%H%M%S")), 'w', newline='') as f:
         writer = csv.writer(f)
         # テストデータ1枚に対して，結果を1行ずつ出力していきます
-        for i, item in enumerate(result):
-            writer.writerow([
-                Path(test_files[i]).name, item # 画像のファイル名
-                # np.argmax(item)  # モデルが予測した画像のクラス (aurora: 0, clearsky: 1, cloud: 2, milkyway: 3)
-            ])
+        for i, res in enumerate(result): writer.writerow([Path(test_files[i]).name, res])
 
     save_path = "competition_model_{}.pth".format(datetime.now().strftime("%m%d_%H%M%S"))
     torch.save(model, save_path)

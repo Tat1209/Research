@@ -7,7 +7,6 @@ from PIL import Image
 from PIL import ImageDraw
 
 
-
 def transform(shape=None):
     def blacken_region(x1, y1, x2, y2):
         def transform(image):
@@ -17,9 +16,7 @@ def transform(shape=None):
         return transform
 
     transformer = transforms.Compose([
-        # transforms.CenterCrop(min(shape[-2], shape[-1])),
         transforms.CenterCrop(85),
-        # transforms.Resize(shape),
         transforms.Lambda(blacken_region(0, 0, 24, 5)),
         transforms.Lambda(blacken_region(85-24, 0, 85-1, 5)),
         transforms.ToTensor(), 
@@ -56,20 +53,21 @@ class Prep:
         self.shape = shape
 
 
-    def fetch_train_val(self):
-        train_ds = torchvision.datasets.ImageFolder(root=self.data_path["train_val"], loader=lambda img_path: Image.open(img_path), transform=transform(self.shape))
-        train_dl = self.batch_processing(train_ds)
-        return train_dl
+    def fetch_train(self):
+        ds_train = torchvision.datasets.ImageFolder(root=self.data_path["labeled"], loader=lambda img_path: Image.open(img_path), transform=transform(self.shape))
+        dl_train = self.batch_processing(ds_train)
+        print(f"{len(dl_train.dataset)} datas were fetched to train.")
+        return dl_train
 
 
     def fetch_test(self):
-        test_ds = TestDataset(self.data_path["test"], transform(self.shape))
-        test_dl = self.batch_processing(test_ds)
-        return test_dl
+        ds_test = TestDataset(self.data_path["unlabeled"], transform(self.shape))
+        dl_test = self.batch_processing(ds_test)
+        print(f"{len(dl_test.dataset)} datas were fetched to test.")
+        return dl_test
     
     
     def batch_processing(self, dataset):
-        # return torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=False)
         return torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=False, num_workers=os.cpu_count(), pin_memory=True)
 
         
