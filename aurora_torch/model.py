@@ -1,6 +1,7 @@
 import random
 import torch
 import numpy as np
+from scheduler import CosineAnnealingWarmupRestarts
 
 class Model:
     def __init__(self, network, learning_rate):
@@ -9,8 +10,9 @@ class Model:
 
         self.learning_rate = learning_rate
         self.loss_func = torch.nn.CrossEntropyLoss()                                                          # 損失関数の設定（説明省略）
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr = self.learning_rate)             # 最適化手法の設定（説明省略）
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=10, T_mult=2, eta_min=0.)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)             # 最適化手法の設定（説明省略）
+        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=20, T_mult=1, eta_min=0.)
+        self.scheduler = CosineAnnealingWarmupRestarts(self.optimizer, first_cycle_steps=50, cycle_mult=1., min_lr=0., warmup_steps=15, gamma=0.8)
 
 
     def fit(self, pr, epochs, aug_prob=None, req_acc=None, rgb=False):
@@ -23,14 +25,14 @@ class Model:
                 else: dl_train = pr.fetch_train(aug=False, rgb=rgb)
 
             dl_val = pr.fetch_val(aug=False, rgb=rgb)
-                
+
             avg_loss, avg_acc = self.train_1epoch(dl_train)
 
-            disp_str = f"Epoch: {epoch+1: >4}/{epochs: >4}    Loss: {avg_loss: <11.6} Acc: {avg_acc: <8.6}"
+            disp_str = f"Epoch: {epoch+1: >4}/{epochs: >4}   Loss: {avg_loss:<8.6}  Acc: {avg_acc:<8.6}"
 
             if dl_val is not None:
                 val_acc = self.val(dl_val)
-                disp_str += f" val_acc: {val_acc: <8.6}"
+                disp_str += f"  val_acc: {val_acc: <8.6}"
 
             if epoch % 10 == 9: print(disp_str)
             else: print(disp_str, end="\r")

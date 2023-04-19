@@ -9,7 +9,7 @@ from PIL import Image
 from PIL import ImageDraw
 
 
-def transform(aug=False, rgb=False):
+def transform(aug=False, rgb=True):
     def blacken_region(x1, y1, x2, y2):
         def transform(image):
             draw = ImageDraw.Draw(image)
@@ -65,34 +65,29 @@ class TestDataset(torch.utils.data.Dataset):
 
 
 class Prep:
-    def __init__(self, data_path, batch_size, train_ratio=None):
+    def __init__(self, data_path, batch_size, train_ratio=1.0):
         self.data_path = data_path
         self.batch_size = batch_size
-        self.labeled = torchvision.datasets.ImageFolder(root=self.data_path["labeled"], loader=lambda img_path: Image.open(img_path), transform=None) # loader引数別にいらん。デフォと同じ
         self.train_ratio = train_ratio
 
-        if self.train_ratio is not None:
-            data_num = len(self.labeled)
-            self.rand_idxs = list(range(data_num))
-            random.shuffle(self.rand_idxs)
-            self.num_train = int(data_num * train_ratio)
+        self.data_num = len(torchvision.datasets.ImageFolder(root=self.data_path["labeled"]))
+        self.rand_idxs = list(range(self.data_num))
+        random.shuffle(self.rand_idxs)
+        self.num_train = int(self.data_num * train_ratio)
 
 
     def fetch_train(self, aug=False, rgb=False):
-        if self.train_ratio is not None: ds = torch.utils.data.Subset(self.labeled, indices=self.rand_idxs[:self.num_train])
-        else: ds = self.labeled
-
-        self.labeled.transform = transform(aug, rgb)
+        ds = torchvision.datasets.ImageFolder(root=self.data_path["labeled"], transform=transform(aug=aug, rgb=rgb))
+        if self.train_ratio is not None: ds = torch.utils.data.Subset(ds, indices=self.rand_idxs[:self.num_train])
         dl = self.data_load(ds)
-
+        
         return dl
 
 
     def fetch_val(self, aug=False, rgb=False):
-        if self.train_ratio is not None: ds = torch.utils.data.Subset(self.labeled, indices=self.rand_idxs[self.num_train:])
-        else: ds = None
-
-        self.labeled.transform = transform(aug, rgb)
+        if self.num_train == self.data_num: return None
+        ds = torchvision.datasets.ImageFolder(root=self.data_path["labeled"], transform=transform(aug=aug, rgb=rgb))
+        ds = torch.utils.data.Subset(ds, indices=self.rand_idxs[self.num_train:])
         dl = self.data_load(ds)
 
         return dl
