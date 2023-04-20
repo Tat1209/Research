@@ -3,8 +3,8 @@ from model import Model
 import post
 
 # from nn import NeuralNet
-from torchvision.models import resnet18 as net
-# from torchvision.models import efficientnet_v2_m as net
+# from torchvision.models import resnet18 as net
+from torchvision.models import efficientnet_v2_m as net
 
 
 data_dir = "aurora/competition01_gray_128x128/"
