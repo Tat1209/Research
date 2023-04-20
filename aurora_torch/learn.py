@@ -1,4 +1,4 @@
-from torchvision.models import efficientnet_v2_m as Net
+from torchvision.models import efficientnet_v2_s as Net
 from prep import Prep
 from nn import NeuralNet
 from model import Model
@@ -16,6 +16,10 @@ learning_rate = 0.0001   # 学習率 (重みをどの程度変更するか？)
 pr = Prep(data_path, batch_size)
 # network = NeuralNet()
 network = Net(num_classes=4)
+
+
+
+
 model = Model(network, learning_rate)
 
 model.fit(pr, epochs, aug_prob=0.9, rgb=True)

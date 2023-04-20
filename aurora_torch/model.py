@@ -72,7 +72,7 @@ class Model:
         return avg_loss, avg_acc
     
 
-    def input_model(self, dl):
+    def input_model(self, dl, ):
         self.model.eval()  # モデルを評価モードにする
         results = []
         labels = []
