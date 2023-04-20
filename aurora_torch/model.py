@@ -2,6 +2,8 @@ import random
 import torch
 import numpy as np
 from scheduler import CosineAnnealingWarmupRestarts
+from time import time
+import datetime
 
 class Model:
     def __init__(self, network, learning_rate):
@@ -10,121 +12,133 @@ class Model:
 
         self.learning_rate = learning_rate
         self.loss_func = torch.nn.CrossEntropyLoss()                                                          # 損失関数の設定（説明省略）
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)             # 最適化手法の設定（説明省略）
+        # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)             # 最適化手法の設定（説明省略）
+        self.optimizer = torch.optim.RAdam(self.model.parameters(), lr=self.learning_rate)             # 最適化手法の設定（説明省略）
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=20, T_mult=1, eta_min=0.)
-        self.scheduler = CosineAnnealingWarmupRestarts(self.optimizer, first_cycle_steps=50, cycle_mult=1., min_lr=0., warmup_steps=15, gamma=0.8)
+        # self.scheduler = CosineAnnealingWarmupRestarts(self.optimizer, first_cycle_steps=50, cycle_mult=1., min_lr=0., warmup_steps=15)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=20, eta_min=0.)
 
 
-    def fit(self, pr, epochs, aug_prob=None, req_acc=None, rgb=False):
+
+    def fit(self, pr, epochs, aug_prob=None, early=None):
+        hist = dict()
+        hist["Epoch"] = [i+1 for i in range(epochs)]
+        start = time()
+
         for epoch in range(epochs):
+            if epoch != 0:
+                stop = time()
+                req_time = (stop-start) / epoch * epochs
+                left = start + req_time - stop
+                eta = (datetime.datetime.now() + datetime.timedelta(seconds=left) + datetime.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
+                t_hour, t_min = divmod(left//60, 60)
+                left = f"{int(t_hour):02d}:{int(t_min):02d}"
+
+
             # augmentationの場合分け
             if aug_prob is None: 
-                if epoch == 0: dl_train = pr.fetch_train(aug=False, rgb=rgb)
+                if epoch == 0: dl_train = pr.fetch_train("aug")
             else: 
-                if random.random() < aug_prob: dl_train = pr.fetch_train(aug=True, rgb=rgb)
-                else: dl_train = pr.fetch_train(aug=False, rgb=rgb)
+                if random.random() < aug_prob: dl_train = pr.fetch_train("aug")
+                else: dl_train = pr.fetch_train()
 
-            dl_val = pr.fetch_val(aug=False, rgb=rgb)
+            dl_val = pr.fetch_val("aug")
 
-            avg_loss, avg_acc = self.train_1epoch(dl_train)
+            stats = dict()
+            stats["Loss"], stats["Acc"] = self.train_1epoch(dl_train)
+            if dl_val is not None: stats["vLoss"], stats["vAcc"] = self.val_1epoch(dl_val)
+            
+            for key, value in stats.items():
+                if epoch == 0: hist[key] = [value]
+                else: hist[key].append(value)
 
-            disp_str = f"Epoch: {epoch+1: >4}/{epochs: >4}   Loss: {avg_loss:<8.6}  Acc: {avg_acc:<8.6}"
+            disp_str = f"Epoch: {epoch+1:>4}/{epochs:>4}"
+            for key, value in stats.items(): disp_str += f"    {key}: {value:<9.7f}"
+            if epoch != 0: disp_str += f"    eta: {eta} (left: {left})"
 
-            if dl_val is not None:
-                val_acc = self.val(dl_val)
-                disp_str += f"  val_acc: {val_acc: <8.6}"
-
-            if epoch % 10 == 9: print(disp_str)
+            n = 20
+            if epoch % n == (n-1) or epoch == epochs-1: print(disp_str)
             else: print(disp_str, end="\r")
-            # print(disp_str)
             
-            if req_acc is not None and avg_acc >= req_acc:
-                print("\nAchieved the required accuracy.")
-                break
+            # if early is not None and 
+            #     print("\nAchieved the required accuracy.")
+            #     break
+            
+        return hist
             
 
-    def train_1epoch(self, dl_train):
+    def train_1epoch(self, dl):
         self.model.train()  # モデルを訓練モードにする
-        total_loss = 0.
-        total_acc = 0.
+        stats = {"result":None, "total_loss":0, "total_corr":0.}
 
-        for inputs, labels in dl_train:
-            # dl_trainには、バッチが複数格納されている。forごとには1バッチ分のデータが渡される。複数形sは、バッチ内にデータがbatch_sizeぶん格納されているからついてるっぽい
-            inputs = inputs.to(self.device)     # GPUが使えるならGPUにデータを送る
-            labels = labels.to(self.device)
-
-            # 学習処理
-            outputs = self.model(inputs)            # ニューラルネットワークの処理を実施
-            loss = self.loss_func(outputs, labels)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
+        for input_b, label_b in dl:
+            loss_b = self.flow(input_b, label_b, stats)
             self.optimizer.zero_grad()              # optimizerを初期化 前バッチで計算した勾配の値を0に
-            loss.backward()                         # 誤差逆伝播 勾配計算
+            loss_b.backward()                         # 誤差逆伝播 勾配計算
             self.optimizer.step()                   # 重み更新して計算グラフを消す
-
-            total_loss += loss.item() * len(inputs) # .item()で1つの値を持つtensorをfloatに
-            _, pred = torch.max(outputs, dim=1)
-            total_acc += torch.sum(pred == labels.data) 
-            
         self.scheduler.step()
         
-        avg_loss = total_loss / len(dl_train.dataset)
-        avg_acc = total_acc / len(dl_train.dataset)
+        avg_loss = stats["total_loss"] / len(dl.dataset)
+        acc = stats["total_corr"] / len(dl.dataset)
         
-        return avg_loss, avg_acc
+        return avg_loss, acc
     
 
-    def input_model(self, dl, ):
-        self.model.eval()  # モデルを評価モードにする
-        results = []
-        labels = []
-        with torch.no_grad(): 
-            for input_b, label_b in dl:
-                input_b = input_b.to(self.device)     # GPUが使えるならGPUにデータを送る
-                output_b = self.model(input_b)
-                results.append(output_b)
-                labels.append(label_b)
-        results = torch.cat(results).cpu().numpy()
-        try: labels = torch.cat(labels).numpy()
-        except: labels = [label for sublist in labels for label in sublist]
-        return results, labels
+    def flow(self, input_b, label_b, stats):
+        input_b = input_b.to(self.device)
+        output_b = self.model(input_b)
+        try:
+            label_b = label_b.to(self.device)
+            loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
+        except: loss_b = None
+
+        if stats["result"] is not None: 
+            if stats["result"].size == 0: stats["result"] = output_b.detach().cpu().numpy()
+            else: np.append(stats["result"], output_b.detach().cpu().numpy())
+        if stats["total_loss"] is not None: stats["total_loss"] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+        if stats["total_corr"] is not None:
+            _, pred = torch.max(output_b, dim=1)
+            stats["total_corr"] += torch.sum(pred == label_b.data).item()
         
+        return loss_b
+        
+    
+    def val_1epoch(self, dl):
+        self.model.eval()  # モデルを評価モードにする
+        stats = {"result":None, "total_loss":0, "total_corr":0.}
 
-    def val(self, dl):
-        results, labels = self.input_model(dl)
-        results = np.argmax(results, axis=1) 
-        acc = (results == labels).sum() / len(dl.dataset)
-        return acc
+        for input_b, label_b in dl:
+            _ = self.flow(input_b, label_b, stats)
+
+        avg_loss = stats["total_loss"] / len(dl.dataset)
+        acc = stats["total_corr"] / len(dl.dataset)
+        return avg_loss, acc
 
 
-    def pred(self, pr, categorize=True, aug=False, rgb=False):
-        dl = pr.fetch_test(aug, rgb)
-        results, _ = self.input_model(dl)
-        if categorize: results = np.argmax(results, axis=1)  # モデルが予測した画像のクラス (aurora: 0, clearsky: 1, cloud: 2, milkyway: 3)
-        return results
+    def pred(self, pr, *args, categorize=True):
+        stats = {"result":np.empty((0)), "total_loss":None, "total_corr":None}
+
+        dl = pr.fetch_test(*args)
+
+        for input_b, label_b in dl:
+            _ = self.flow(input_b, label_b, stats)
+
+        if categorize: stats["result"] = np.argmax(stats["result"], axis=1)  # モデルが予測した画像のクラス (aurora: 0, clearsky: 1, cloud: 2, milkyway: 3)
+        return stats["result"]
 
 
-    def pred_tta(self, pr, times, aug_pred=None, aug_ratio=None, categorize=True, rgb=False):
-        def pred_custom(i, times_i):
-            if aug_pred is not None and random.random() < aug_pred  or  aug_ratio is not None and i/times_i < aug_ratio:
-               return self.pred(pr, categorize=False, aug=True, rgb=rgb) 
-            else: return self.pred(pr, categorize=False, aug=False, rgb=rgb)
+    def pred_tta(self, pr, times, aug_pred=None, aug_ratio=None, categorize=True):
+        def pred_custom(value):
+            if aug_pred is not None and random.random() < aug_pred  or  aug_ratio is not None and value < aug_ratio:
+               return self.pred(pr, "aug", categorize=False)
+            else: return self.pred(pr, categorize=False)
 
-        total_results = None
         for i in range(times):
-            if i == 0: 
-                total_results = pred_custom(i, times)
-            else:
-                total_results += pred_custom(i, times)
-            pass
-        results = total_results / times
-        if categorize: results = np.argmax(results, axis=1)  # モデルが予測した画像のクラス (aurora: 0, clearsky: 1, cloud: 2, milkyway: 3)
-        return results
+            value = i/times
+            if i == 0: total_results = pred_custom(value)
+            else: total_results += pred_custom(value)
+        result = total_results / times
+        if categorize: result = np.argmax(result, axis=1)  # モデルが予測した画像のクラス (aurora: 0, clearsky: 1, cloud: 2, milkyway: 3)
+        return result
 
 
-# from torchvision import transforms
-# from torchvision.transforms import InterpolationMode
-# da = transforms.Compose([
-#     transforms.RandomRotation(degrees=(0, 360), interpolation=InterpolationMode.NEAREST),
-#     transforms.RandomHorizontalFlip(p=0.5), 
-#     transforms.ToTensor(), 
-#     ])
-# inputs = da(inputs)
