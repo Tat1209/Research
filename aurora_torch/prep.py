@@ -37,7 +37,10 @@ def transform(args):
 
     if "color" in args: pipe += [transforms.Lambda(convert_to_rgb())]
 
-    pipe += [ transforms.ToTensor(), ]
+    pipe += [
+            transforms.ToTensor(), 
+            
+            ]
 
     return transforms.Compose(pipe)
 
@@ -86,7 +89,7 @@ class Prep:
 
 
     def fetch_val(self, *args):
-        if self.num_train == self.data_num: return None
+        if self.num_train >= self.data_num: return None
         if self.color: args += ("color", )
         ds = torchvision.datasets.ImageFolder(root=self.data_path["labeled"], transform=transform(args))
         ds = torch.utils.data.Subset(ds, indices=self.rand_idxs[self.num_train:])
@@ -104,6 +107,19 @@ class Prep:
 
     def fetch_loader(self, dataset):
         return torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=False, num_workers=2, pin_memory=True)
+        
+
+"""
+    def fetch_normdata(self):
+        self.fetch_test():
+        mean = {"r":0., "g":0., "b":0.}
+        std = {"r":0., "g":0., "b":0.}
+
+        for input_b, label_b in dl:
+        
+        avg_loss = stats["total_loss"] / len(dl.dataset)
+        acc = stats["total_corr"] / len(dl.dataset)
+"""
 
 
 

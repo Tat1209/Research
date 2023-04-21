@@ -1,34 +1,33 @@
 import random
 import torch
 import numpy as np
-from scheduler import CosineAnnealingWarmupRestarts
 from time import time
 import datetime
 
 class Model:
-    def __init__(self, network, learning_rate):
+    def __init__(self, network, epochs, learning_rate):
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')        # GPUが使える場合は、GPU使用モードにする。
         self.model = network.to(self.device)                                                        # ニューラルネットワークの生成して、GPUにデータを送る
 
+        self.epochs = epochs
         self.learning_rate = learning_rate
+
         self.loss_func = torch.nn.CrossEntropyLoss()                                                          # 損失関数の設定（説明省略）
-        # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)             # 最適化手法の設定（説明省略）
         self.optimizer = torch.optim.RAdam(self.model.parameters(), lr=self.learning_rate)             # 最適化手法の設定（説明省略）
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs)
+
+
+    def fit(self, pr, aug_prob=None, early=None):
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=20, T_mult=1, eta_min=0.)
-        # self.scheduler = CosineAnnealingWarmupRestarts(self.optimizer, first_cycle_steps=50, cycle_mult=1., min_lr=0., warmup_steps=15)
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=20, eta_min=0.)
 
-
-
-    def fit(self, pr, epochs, aug_prob=None, early=None):
         hist = dict()
-        hist["Epoch"] = [i+1 for i in range(epochs)]
+        hist["Epoch"] = [i+1 for i in range(self.epochs)]
         start = time()
 
-        for epoch in range(epochs):
+        for epoch in range(self.epochs):
             if epoch != 0:
                 stop = time()
-                req_time = (stop-start) / epoch * epochs
+                req_time = (stop-start) / epoch * self.epochs
                 left = start + req_time - stop
                 eta = (datetime.datetime.now() + datetime.timedelta(seconds=left) + datetime.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
                 t_hour, t_min = divmod(left//60, 60)
@@ -52,12 +51,12 @@ class Model:
                 if epoch == 0: hist[key] = [value]
                 else: hist[key].append(value)
 
-            disp_str = f"Epoch: {epoch+1:>4}/{epochs:>4}"
+            disp_str = f"Epoch: {epoch+1:>4}/{self.epochs:>4}"
             for key, value in stats.items(): disp_str += f"    {key}: {value:<9.7f}"
             if epoch != 0: disp_str += f"    eta: {eta} (left: {left})"
 
             n = 20
-            if epoch % n == (n-1) or epoch == epochs-1: print(disp_str)
+            if epoch % n == (n-1) or epoch == self.epochs: print(disp_str)
             else: print(disp_str, end="\r")
             
             # if early is not None and 
@@ -94,7 +93,7 @@ class Model:
 
         if stats["result"] is not None: 
             if stats["result"].size == 0: stats["result"] = output_b.detach().cpu().numpy()
-            else: np.append(stats["result"], output_b.detach().cpu().numpy())
+            else: stats["result"] = np.concatenate((stats["result"], output_b.detach().cpu().numpy()), axis=0)
         if stats["total_loss"] is not None: stats["total_loss"] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
         if stats["total_corr"] is not None:
             _, pred = torch.max(output_b, dim=1)
@@ -133,6 +132,7 @@ class Model:
                return self.pred(pr, "aug", categorize=False)
             else: return self.pred(pr, categorize=False)
 
+        total_results = None
         for i in range(times):
             value = i/times
             if i == 0: total_results = pred_custom(value)

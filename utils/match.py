@@ -1,8 +1,7 @@
 import csv
 
-file1 = "competition_result_0419_183148_90789.csv"
-file2 = "competition_result_0420_100403.csv"
-# file2 = "competition_result_0420_061158.csv"
+file1 = "competition_result_0420_135106_90836.csv"
+file2 = "competition_result_0421_091540.csv"
     
 def csv2dict(path):
     ret_dict = dict()

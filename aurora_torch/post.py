@@ -18,10 +18,11 @@ def postprocess(pr, result, hist, model):
         writer = csv.writer(f)
         for i, res in enumerate(result): writer.writerow([Path(test_files[i]).name, res])
     
-    pd.DataFrame(hist).to_csv(f'competition_hist_{ft}.csv', index=False)
+    if hist is not None: pd.DataFrame(hist).to_csv(f'competition_hist_{ft}.csv', index=False)
 
-    save_path = f"competition_model_{ft}.pth"
-    torch.save(model, save_path)
+    if model is not None:
+        save_path = f"competition_model_{ft}.pth"
+        torch.save(model, save_path)
             
 
 
