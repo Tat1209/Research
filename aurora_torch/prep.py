@@ -23,6 +23,7 @@ class TestDataset(torch.utils.data.Dataset):
 
         img = Image.open(img_path)
         if self.transform is None: return 0, img_path
+        img = img.convert('RGB')
         img_tensor = self.transform(img)
         return img_tensor, img_path
 
@@ -39,7 +40,7 @@ class Prep:
         self.train_ratio = train_ratio
         
         base_ds = torchvision.datasets.ImageFolder(root=self.data_path["labeled"], transform=None)
-        self.tr = Trans(None, base_ds, batch_size)
+        self.tr = Trans(info={'mean':[0.3108, 0.3108, 0.3108], 'std':[0.3188, 0.3188, 0.3188]})
 
         self.data_num = len(base_ds)
         self.rand_idxs = list(range(self.data_num))

@@ -81,5 +81,7 @@ class Trans:
         info = dict()
         info["mean"] = pv.mean(dim=1).cpu()
         info["std"] = pv.std(dim=1).cpu()
+        
+        print(info)
 
         return info

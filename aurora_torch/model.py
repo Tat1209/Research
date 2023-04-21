@@ -118,7 +118,7 @@ class Model:
     def pred(self, pr, tr=None, categorize=True):
         stats = {"result":np.empty((0)), "total_loss":None, "total_corr":None}
 
-        if tr is None: dl = pr.fetch_test(pr.tr.rgb)
+        if tr is None: dl = pr.fetch_test(pr.tr.gen)
         else: dl = pr.fetch_test(tr)
 
         for input_b, label_b in dl:
@@ -131,7 +131,7 @@ class Model:
     def pred_tta(self, pr, times, aug_pred=None, aug_ratio=None, categorize=True):
         def pred_custom(value):
             if aug_pred is not None and random.random() < aug_pred  or  aug_ratio is not None and value < aug_ratio:
-               return self.pred(pr, tr=pr.tr.rgbaug, categorize=False)
+               return self.pred(pr, tr=pr.tr.aug, categorize=False)
             else: return self.pred(pr, categorize=False)
 
         total_results = None
