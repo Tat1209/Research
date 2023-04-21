@@ -4,6 +4,7 @@ import numpy as np
 from time import time
 import datetime
 
+
 class Model:
     def __init__(self, network, epochs, learning_rate):
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')        # GPUが使える場合は、GPU使用モードにする。
@@ -36,12 +37,12 @@ class Model:
 
             # augmentationの場合分け
             if aug_prob is None: 
-                if epoch == 0: dl_train = pr.fetch_train("aug")
+                if epoch == 0: dl_train = pr.fetch_train(pr.tr.aug)
             else: 
-                if random.random() < aug_prob: dl_train = pr.fetch_train("aug")
-                else: dl_train = pr.fetch_train()
+                if random.random() < aug_prob: dl_train = pr.fetch_train(pr.tr.aug)
+                else: dl_train = pr.fetch_train(pr.tr.gen)
 
-            dl_val = pr.fetch_val("aug")
+            dl_val = pr.fetch_val(pr.tr.aug)
 
             stats = dict()
             stats["Loss"], stats["Acc"] = self.train_1epoch(dl_train)
@@ -114,10 +115,11 @@ class Model:
         return avg_loss, acc
 
 
-    def pred(self, pr, *args, categorize=True):
+    def pred(self, pr, tr=None, categorize=True):
         stats = {"result":np.empty((0)), "total_loss":None, "total_corr":None}
 
-        dl = pr.fetch_test(*args)
+        if tr is None: dl = pr.fetch_test(pr.tr.rgb)
+        else: dl = pr.fetch_test(tr)
 
         for input_b, label_b in dl:
             _ = self.flow(input_b, label_b, stats)
@@ -129,7 +131,7 @@ class Model:
     def pred_tta(self, pr, times, aug_pred=None, aug_ratio=None, categorize=True):
         def pred_custom(value):
             if aug_pred is not None and random.random() < aug_pred  or  aug_ratio is not None and value < aug_ratio:
-               return self.pred(pr, "aug", categorize=False)
+               return self.pred(pr, tr=pr.tr.rgbaug, categorize=False)
             else: return self.pred(pr, categorize=False)
 
         total_results = None

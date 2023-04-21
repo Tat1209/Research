@@ -8,7 +8,7 @@ import pandas as pd
 
 def postprocess(pr, result, hist, model):
     test_files = []
-    dl_test = pr.fetch_test()
+    dl_test = pr.fetch_test(None)
     for item in iter(dl_test):
         filenames = item[1]
         for file in filenames: test_files.append(str(file))
