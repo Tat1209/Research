@@ -7,18 +7,18 @@ import datetime
 
 class Model:
     def __init__(self, network, epochs, learning_rate):
-        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')        # GPUが使える場合は、GPU使用モードにする。
-        self.model = network.to(self.device)                                                        # ニューラルネットワークの生成して、GPUにデータを送る
+        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu') 
+        self.model = network.to(self.device)                                                        
 
         self.epochs = epochs
         self.learning_rate = learning_rate
 
-        self.loss_func = torch.nn.CrossEntropyLoss()                                                          # 損失関数の設定（説明省略）
-        self.optimizer = torch.optim.RAdam(self.model.parameters(), lr=self.learning_rate)             # 最適化手法の設定（説明省略）
+        self.loss_func = torch.nn.CrossEntropyLoss()                                                          # 損失関数の設定
+        self.optimizer = torch.optim.RAdam(self.model.parameters(), lr=self.learning_rate)             # 最適化手法の設定
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs)
 
 
-    def fit(self, pr, aug_prob=None, early=None):
+    def fit(self, pr, aug_ratio=None):
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=20, T_mult=1, eta_min=0.)
 
         hist = dict()
@@ -36,13 +36,13 @@ class Model:
 
 
             # augmentationの場合分け
-            if aug_prob is None: 
-                if epoch == 0: dl_train = pr.fetch_train(pr.tr.aug)
+            if aug_ratio is None: 
+                if epoch == 0: dl_train = pr.fetch_train(pr.tr.gen)
             else: 
-                if random.random() < aug_prob: dl_train = pr.fetch_train(pr.tr.aug)
+                if epoch/self.epochs < aug_ratio: dl_train = pr.fetch_train(pr.tr.aug)
                 else: dl_train = pr.fetch_train(pr.tr.gen)
 
-            dl_val = pr.fetch_val(pr.tr.aug)
+            dl_val = pr.fetch_val(pr.tr.gen)
 
             stats = dict()
             stats["Loss"], stats["Acc"] = self.train_1epoch(dl_train)
@@ -57,12 +57,8 @@ class Model:
             if epoch != 0: disp_str += f"    eta: {eta} (left: {left})"
 
             n = 20
-            if epoch % n == (n-1) or epoch == self.epochs: print(disp_str)
+            if (epoch+1) % n == 0 or (epoch+1) == self.epochs: print(disp_str)
             else: print(disp_str, end="\r")
-            
-            # if early is not None and 
-            #     print("\nAchieved the required accuracy.")
-            #     break
             
         return hist
             
@@ -82,27 +78,8 @@ class Model:
         acc = stats["total_corr"] / len(dl.dataset)
         
         return avg_loss, acc
-    
 
-    def flow(self, input_b, label_b, stats):
-        input_b = input_b.to(self.device)
-        output_b = self.model(input_b)
-        try:
-            label_b = label_b.to(self.device)
-            loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
-        except: loss_b = None
 
-        if stats["result"] is not None: 
-            if stats["result"].size == 0: stats["result"] = output_b.detach().cpu().numpy()
-            else: stats["result"] = np.concatenate((stats["result"], output_b.detach().cpu().numpy()), axis=0)
-        if stats["total_loss"] is not None: stats["total_loss"] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
-        if stats["total_corr"] is not None:
-            _, pred = torch.max(output_b, dim=1)
-            stats["total_corr"] += torch.sum(pred == label_b.data).item()
-        
-        return loss_b
-        
-    
     def val_1epoch(self, dl):
         self.model.eval()  # モデルを評価モードにする
         stats = {"result":None, "total_loss":0, "total_corr":0.}
@@ -113,34 +90,55 @@ class Model:
         avg_loss = stats["total_loss"] / len(dl.dataset)
         acc = stats["total_corr"] / len(dl.dataset)
         return avg_loss, acc
+    
 
-
-    def pred(self, pr, tr=None, categorize=True):
+    def pred_1iter(self, dl):
         stats = {"result":np.empty((0)), "total_loss":None, "total_corr":None}
-
-        if tr is None: dl = pr.fetch_test(pr.tr.gen)
-        else: dl = pr.fetch_test(tr)
 
         for input_b, label_b in dl:
             _ = self.flow(input_b, label_b, stats)
 
-        if categorize: stats["result"] = np.argmax(stats["result"], axis=1)  # モデルが予測した画像のクラス (aurora: 0, clearsky: 1, cloud: 2, milkyway: 3)
         return stats["result"]
-
-
-    def pred_tta(self, pr, times, aug_pred=None, aug_ratio=None, categorize=True):
-        def pred_custom(value):
-            if aug_pred is not None and random.random() < aug_pred  or  aug_ratio is not None and value < aug_ratio:
-               return self.pred(pr, tr=pr.tr.aug, categorize=False)
-            else: return self.pred(pr, categorize=False)
+    
+    
+    def pred(self, pr, categorize=True, times=1, aug_ratio=None):
 
         total_results = None
+
         for i in range(times):
-            value = i/times
-            if i == 0: total_results = pred_custom(value)
-            else: total_results += pred_custom(value)
+            if aug_ratio is not None and i/times < aug_ratio: dl = pr.fetch_test(pr.tr.aug)
+            else: dl = pr.fetch_test(pr.tr.gen)
+
+            if i == 0: total_results = self.pred_1iter(dl)
+            else: total_results += self.pred_1iter(dl)
+
         result = total_results / times
-        if categorize: result = np.argmax(result, axis=1)  # モデルが予測した画像のクラス (aurora: 0, clearsky: 1, cloud: 2, milkyway: 3)
+        if categorize: result = np.argmax(result, axis=1)
         return result
+
+
+    def flow(self, input_b, label_b, stats):
+        input_b = input_b.to(self.device)
+        output_b = self.model(input_b)
+        try:
+            label_b = label_b.to(self.device)
+            loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
+        except: loss_b = None   # returnはダメ 結果格納できん
+
+        self.flow_log(input_b, output_b, label_b, loss_b, stats)
+
+        return loss_b
+    
+
+    def flow_log(self, input_b, output_b, label_b, loss_b, stats):
+        if stats["result"] is not None: 
+            if stats["result"].size == 0: stats["result"] = output_b.detach().cpu().numpy()
+            else: stats["result"] = np.concatenate((stats["result"], output_b.detach().cpu().numpy()), axis=0)
+        if stats["total_loss"] is not None: stats["total_loss"] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+        if stats["total_corr"] is not None:
+            _, pred = torch.max(output_b, dim=1)
+            stats["total_corr"] += torch.sum(pred == label_b.data).item()
+        
+        
 
 
