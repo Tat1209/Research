@@ -34,23 +34,25 @@ class TestDataset(torch.utils.data.Dataset):
 
 
 class Prep:
-    def __init__(self, data_path, batch_size, train_ratio=1.0):
+    def __init__(self, data_path, batch_size, train_range=1.0):
         self.data_path = data_path
         self.batch_size = batch_size
-        self.train_ratio = train_ratio
         
         base_ds = torchvision.datasets.ImageFolder(root=self.data_path["labeled"], transform=None)
         self.tr = Trans(info={'mean':[0.3108, 0.3108, 0.3108], 'std':[0.3188, 0.3188, 0.3188]})
 
         self.data_num = len(base_ds)
         self.rand_idxs = list(range(self.data_num))
+        random.seed(0)
         random.shuffle(self.rand_idxs)
-        self.num_train = int(self.data_num * train_ratio)
+
+        if not isinstance(train_range, tuple): self.train_range = (0, int(train_range * self.data_num))
+        else: self.train_range = (int(train_range[0] * self.data_num), int(train_range[1] * self.data_num))
 
 
     def fetch_train(self, transform):
         ds = torchvision.datasets.ImageFolder(root=self.data_path["labeled"], transform=transform)
-        if self.train_ratio is not None: ds = torch.utils.data.Subset(ds, indices=self.rand_idxs[:self.num_train])
+        if self.train_range is not None: ds = torch.utils.data.Subset(ds, indices=self.rand_idxs[:self.num_train])
         dl = self.fetch_loader(ds)
 
         return dl

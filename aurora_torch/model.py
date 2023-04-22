@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from time import time
 import datetime
+import torchvision
 
 
 class Model:
@@ -16,10 +17,10 @@ class Model:
         self.loss_func = torch.nn.CrossEntropyLoss()                                                          # 損失関数の設定
         self.optimizer = torch.optim.RAdam(self.model.parameters(), lr=self.learning_rate)             # 最適化手法の設定
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs)
-
-
-    def fit(self, pr, aug_ratio=None):
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=20, T_mult=1, eta_min=0.)
+
+
+    def fit(self, pr, aug_ratio=None, mixup_alpha=None):
 
         hist = dict()
         hist["Epoch"] = [i+1 for i in range(self.epochs)]
@@ -37,17 +38,23 @@ class Model:
 
             # augmentationの場合分け
             if aug_ratio is None: 
-                if epoch == 0: dl_train = pr.fetch_train(pr.tr.gen)
+                if epoch == 0:
+                    dl_train = pr.fetch_train(pr.tr.gen)
+                    alpha = None
             else: 
-                if epoch/self.epochs < aug_ratio: dl_train = pr.fetch_train(pr.tr.aug)
-                else: dl_train = pr.fetch_train(pr.tr.gen)
+                if epoch/self.epochs < aug_ratio:
+                    dl_train = pr.fetch_train(pr.tr.aug)
+                    alpha = mixup_alpha
+                else:
+                    dl_train = pr.fetch_train(pr.tr.gen)
+                    alpha=None
 
             dl_val = pr.fetch_val(pr.tr.gen)
 
             stats = dict()
-            stats["Loss"], stats["Acc"] = self.train_1epoch(dl_train)
+            stats["Loss"], stats["Acc"] = self.train_1epoch(dl_train, mixup_alpha=alpha)
             if dl_val is not None: stats["vLoss"], stats["vAcc"] = self.val_1epoch(dl_val)
-            
+
             for key, value in stats.items():
                 if epoch == 0: hist[key] = [value]
                 else: hist[key].append(value)
@@ -59,24 +66,24 @@ class Model:
             n = 20
             if (epoch+1) % n == 0 or (epoch+1) == self.epochs: print(disp_str)
             else: print(disp_str, end="\r")
-            
-        return hist
-            
 
-    def train_1epoch(self, dl):
+        return hist
+
+
+    def train_1epoch(self, dl, mixup_alpha=None):
         self.model.train()  # モデルを訓練モードにする
         stats = {"result":None, "total_loss":0, "total_corr":0.}
 
         for input_b, label_b in dl:
-            loss_b = self.flow(input_b, label_b, stats)
+            loss_b = self.flow(input_b, label_b, stats, mixup_alpha=mixup_alpha)
             self.optimizer.zero_grad()              # optimizerを初期化 前バッチで計算した勾配の値を0に
             loss_b.backward()                         # 誤差逆伝播 勾配計算
             self.optimizer.step()                   # 重み更新して計算グラフを消す
         self.scheduler.step()
-        
+
         avg_loss = stats["total_loss"] / len(dl.dataset)
         acc = stats["total_corr"] / len(dl.dataset)
-        
+
         return avg_loss, acc
 
 
@@ -84,23 +91,25 @@ class Model:
         self.model.eval()  # モデルを評価モードにする
         stats = {"result":None, "total_loss":0, "total_corr":0.}
 
-        for input_b, label_b in dl:
-            _ = self.flow(input_b, label_b, stats)
+        with torch.no_grad():
+            for input_b, label_b in dl:
+                _ = self.flow(input_b, label_b, stats)
 
         avg_loss = stats["total_loss"] / len(dl.dataset)
         acc = stats["total_corr"] / len(dl.dataset)
         return avg_loss, acc
-    
+
 
     def pred_1iter(self, dl):
         stats = {"result":np.empty((0)), "total_loss":None, "total_corr":None}
 
-        for input_b, label_b in dl:
-            _ = self.flow(input_b, label_b, stats)
+        with torch.no_grad():
+            for input_b, label_b in dl:
+                _ = self.flow(input_b, label_b, stats)
 
         return stats["result"]
-    
-    
+
+
     def pred(self, pr, categorize=True, times=1, aug_ratio=None):
 
         total_results = None
@@ -117,20 +126,33 @@ class Model:
         return result
 
 
-    def flow(self, input_b, label_b, stats):
+    def flow(self, input_b, label_b, stats, mixup_alpha=None):
         input_b = input_b.to(self.device)
-        output_b = self.model(input_b)
         try:
             label_b = label_b.to(self.device)
-            loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
-        except: loss_b = None   # returnはダメ 結果格納できん
 
-        self.flow_log(input_b, output_b, label_b, loss_b, stats)
+            if mixup_alpha is None:
+                output_b = self.model(input_b)
+                loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
 
-        return loss_b
-    
+            else: 
+                lmd = np.random.beta(mixup_alpha, mixup_alpha)
+                perm = torch.randperm(input_b.shape[0]).to(self.device)
+                input2_b = input_b[perm, :]
+                label2_b = label_b[perm]
+                
+                input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
+                output_b = self.model(input_b)
+                loss_b = lmd * self.loss_func(output_b, label_b)  +  (1.0 - lmd) * self.loss_func(output_b, label2_b)
 
-    def flow_log(self, input_b, output_b, label_b, loss_b, stats):
+            torchvision.transforms.ToPILImage()(input_b[0]).save('test.jpg', quality=100, subsampling=0)
+
+        except: 
+            output_b = self.model(input_b)
+            loss_b = None   # returnはダメ 結果格納できん test時の挙動
+
+            
+
         if stats["result"] is not None: 
             if stats["result"].size == 0: stats["result"] = output_b.detach().cpu().numpy()
             else: stats["result"] = np.concatenate((stats["result"], output_b.detach().cpu().numpy()), axis=0)
@@ -138,7 +160,8 @@ class Model:
         if stats["total_corr"] is not None:
             _, pred = torch.max(output_b, dim=1)
             stats["total_corr"] += torch.sum(pred == label_b.data).item()
-        
-        
+
+        return loss_b
+
 
 

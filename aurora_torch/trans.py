@@ -52,8 +52,9 @@ class Trans:
         
         self.gen = self.compose(self.base + self.tsr + self.norm)
         self.aug = self.compose(self.base + self.roflip + self.tsr + self.norm)
-        self.rgb = self.compose(self.base + self.color + self.tsr + self.norm)
-        self.rgbaug = self.compose(self.base + self.roflip + self.color + self.tsr + self.norm)
+
+        # self.rgb = self.compose(self.base + self.color + self.tsr + self.norm)
+        # self.rgbaug = self.compose(self.base + self.roflip + self.color + self.tsr + self.norm)
 
 
 
