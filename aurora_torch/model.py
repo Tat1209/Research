@@ -1,4 +1,3 @@
-import random
 import torch
 import numpy as np
 from time import time
@@ -20,7 +19,7 @@ class Model:
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=20, T_mult=1, eta_min=0.)
 
 
-    def fit(self, pr, aug_ratio=None, mixup_alpha=None):
+    def fit(self, pr, fit_aug_ratio=None, mixup_alpha=None):
 
         hist = dict()
         hist["Epoch"] = [i+1 for i in range(self.epochs)]
@@ -37,12 +36,12 @@ class Model:
 
 
             # augmentationの場合分け
-            if aug_ratio is None: 
+            if fit_aug_ratio is None: 
                 if epoch == 0:
                     dl_train = pr.fetch_train(pr.tr.gen)
                     alpha = None
             else: 
-                if epoch/self.epochs < aug_ratio:
+                if epoch/self.epochs < fit_aug_ratio:
                     dl_train = pr.fetch_train(pr.tr.aug)
                     alpha = mixup_alpha
                 else:
@@ -68,7 +67,7 @@ class Model:
             else: print(disp_str, end="\r")
 
         return hist
-
+    
 
     def train_1epoch(self, dl, mixup_alpha=None):
         self.model.train()  # モデルを訓練モードにする
@@ -110,18 +109,19 @@ class Model:
         return stats["result"]
 
 
-    def pred(self, pr, categorize=True, times=1, aug_ratio=None):
+    def pred(self, pr, categorize=True, tta_times=1, tta_aug_ratio=None):
 
         total_results = None
 
-        for i in range(times):
-            if aug_ratio is not None and i/times < aug_ratio: dl = pr.fetch_test(pr.tr.aug)
+        for i in range(tta_times):
+            if tta_aug_ratio is not None and i/tta_times < tta_aug_ratio: dl = pr.fetch_test(pr.tr.aug)
             else: dl = pr.fetch_test(pr.tr.gen)
 
             if i == 0: total_results = self.pred_1iter(dl)
             else: total_results += self.pred_1iter(dl)
 
-        result = total_results / times
+        # 平均に対してsoftmaxを適用
+        result = torch.nn.functional.softmax(torch.from_numpy(total_results/tta_times), dim=1).numpy()
         if categorize: result = np.argmax(result, axis=1)
         return result
 
@@ -145,7 +145,8 @@ class Model:
                 output_b = self.model(input_b)
                 loss_b = lmd * self.loss_func(output_b, label_b)  +  (1.0 - lmd) * self.loss_func(output_b, label2_b)
 
-            torchvision.transforms.ToPILImage()(input_b[0]).save('test.jpg', quality=100, subsampling=0)
+################################### 画像をテスト出力
+            # torchvision.transforms.ToPILImage()(input_b[0]).save('test.jpg', quality=100, subsampling=0)
 
         except: 
             output_b = self.model(input_b)
