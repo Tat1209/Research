@@ -164,7 +164,7 @@ class Model:
             _, pred = torch.max(output_b.detach(), dim=1)
             if mixup_alpha is None:
                 stats["total_corr"] += torch.sum(pred == label_b.data).item()
-            else: stats["total_corr"] += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).cpu()
+            else: stats["total_corr"] += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).cpu().numpy()
 
 
         return loss_b
