@@ -16,9 +16,9 @@ def ens(model_list, pr, categorize=True, fit_aug_ratio=None, tta_times=None, tta
         mod_res["vAcc"].append(hist["vAcc"][-1])
         mod_res["results"].append(result)
         
-        # post.postprocess(pr, result, hist, model)
+        post.postprocess(pr, result, hist, model)
     vAcc_sum = (np.array(mod_res["results"]) * np.array(mod_res["vAcc"])[:, np.newaxis, np.newaxis]).sum(axis=0)
     ens_res =  vAcc_sum / np.array(mod_res["vAcc"]).sum()
-    if categorize: result = np.argmax(result, axis=1)
+    if categorize: ens_res = np.argmax(ens_res, axis=1)
     post.postprocess(pr, ens_res, None, None)
         

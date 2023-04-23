@@ -114,7 +114,9 @@ class Model:
         total_results = None
 
         for i in range(tta_times):
-            if tta_aug_ratio is not None and i/tta_times < tta_aug_ratio: dl = pr.fetch_test(pr.tr.aug)
+            if tta_aug_ratio is not None:
+                if i/tta_times < tta_aug_ratio: dl = pr.fetch_test(pr.tr.aug)
+                else: pr.fetch_test(pr.tr.flip_aug)
             else: dl = pr.fetch_test(pr.tr.gen)
 
             if i == 0: total_results = self.pred_1iter(dl)
@@ -159,8 +161,11 @@ class Model:
             else: stats["result"] = np.concatenate((stats["result"], output_b.detach().cpu().numpy()), axis=0)
         if stats["total_loss"] is not None: stats["total_loss"] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
         if stats["total_corr"] is not None:
-            _, pred = torch.max(output_b, dim=1)
-            stats["total_corr"] += torch.sum(pred == label_b.data).item()
+            _, pred = torch.max(output_b.detach(), dim=1)
+            if mixup_alpha is None:
+                stats["total_corr"] += torch.sum(pred == label_b.data).item()
+            else: stats["total_corr"] += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).cpu()
+
 
         return loss_b
 

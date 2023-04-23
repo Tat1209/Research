@@ -47,7 +47,8 @@ class Prep:
         random.shuffle(self.rand_idxs)
 
         if not isinstance(val_range, tuple): self.val_range = (0, 0)
-        else: self.val_range = (int(val_range[0] * self.data_num), int(val_range[1] * self.data_num))
+        else: self.val_range = val_range
+        pass
 
 
     def fetch_train(self, transform):

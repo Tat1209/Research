@@ -48,10 +48,12 @@ class Trans:
         # self.flip270 = [lambda image: rotate(image, 270)]
         self.hflip = [transforms.RandomHorizontalFlip(p=1)]
         self.vflip = [transforms.RandomVerticalFlip(p=1)]
+        self.rflip = [transforms.RandomHorizontalFlip(p=0.5), transforms.RandomVerticalFlip(p=0.5)]
         self.color = [transforms.Lambda(convert_to_rgb())]
         
         self.gen = self.compose(self.base + self.tsr + self.norm)
         self.aug = self.compose(self.base + self.roflip + self.tsr + self.norm)
+        self.flip_aug = self.compose(self.base + self.rflip + self.tsr + self.norm)
 
         # self.rgb = self.compose(self.base + self.color + self.tsr + self.norm)
         # self.rgbaug = self.compose(self.base + self.roflip + self.color + self.tsr + self.norm)
