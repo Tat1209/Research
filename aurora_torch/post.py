@@ -6,9 +6,9 @@ import torch
 import pandas as pd
 
 
-def postprocess(pr, result, hist, model):
+def postprocess(result, hist, model):
     test_files = []
-    dl_test = pr.fetch_test(None)
+    dl_test = model.pr.fetch_test(None)
     for item in iter(dl_test):
         filenames = item[1]
         for file in filenames: test_files.append(str(file))
@@ -22,7 +22,7 @@ def postprocess(pr, result, hist, model):
 
     if model is not None:
         save_path = f"competition_model_{ft}.pth"
-        torch.save(model, save_path)
+        torch.save(model.network, save_path)
             
 
 

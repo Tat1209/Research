@@ -34,7 +34,7 @@ class TestDataset(torch.utils.data.Dataset):
 
 
 class Prep:
-    def __init__(self, data_path, batch_size, val_range=0.):
+    def __init__(self, data_path, batch_size, val_range=0., seed=None):
         self.data_path = data_path
         self.batch_size = batch_size
         
@@ -43,7 +43,7 @@ class Prep:
 
         self.data_num = len(base_ds)
         self.rand_idxs = list(range(self.data_num))
-        random.seed(0)
+        random.seed(seed)
         random.shuffle(self.rand_idxs)
 
         if not isinstance(val_range, tuple): self.val_range = (0, 0)
