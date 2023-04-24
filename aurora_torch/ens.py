@@ -1,22 +1,15 @@
 import numpy as np
 
-from prep import Prep
 from model import Model
 import post
 
 
 def ens(model_list, categorize=True, fit_aug_ratio=None, tta_times=None, tta_aug_ratio=None, mixup_alpha=None):
     mod_res = {"vAcc":[], "results":[]}
-    num_models = len(model_list)
-    data_dir = "/root/app/competition01_gray_128x128/"
-    data_path = {"labeled":data_dir+"train_val", "unlabeled":data_dir+"test"}
-    batch_size = 120        # バッチサイズ (並列して学習を実施する数)  
+    for model in model_list:
+        hist = model.fit(fit_aug_ratio=fit_aug_ratio, mixup_alpha=mixup_alpha)
 
-    for i, model in enumerate(model_list):
-        pr = Prep(data_path, batch_size, val_range=(i/num_models, (i+1)/num_models))
-        hist = model.fit(pr, fit_aug_ratio=fit_aug_ratio, mixup_alpha=mixup_alpha)
-
-        result = model.pred(pr, categorize=False, tta_times=tta_times, tta_aug_ratio=tta_aug_ratio)
+        result = model.pred(categorize=False, tta_times=tta_times, tta_aug_ratio=tta_aug_ratio)
         
         mod_res["vAcc"].append(hist["vAcc"][-1])
         mod_res["results"].append(result)
@@ -25,5 +18,5 @@ def ens(model_list, categorize=True, fit_aug_ratio=None, tta_times=None, tta_aug
     vAcc_sum = (np.array(mod_res["results"]) * np.array(mod_res["vAcc"])[:, np.newaxis, np.newaxis]).sum(axis=0)
     ens_res =  vAcc_sum / np.array(mod_res["vAcc"]).sum()
     if categorize: ens_res = np.argmax(ens_res, axis=1)
-    post.postprocess(ens_res, None, None)
+    post.postprocess(ens_res, None, model)
         

@@ -13,7 +13,7 @@ data_dir = "/root/app/competition01_gray_128x128/"
 data_path = {"labeled":data_dir+"train_val", "unlabeled":data_dir+"test"}
 
 batch_size = 120        # バッチサイズ (並列して学習を実施する数)  
-epochs = 10              # エポック数 (学習を何回実施するか？という変数)
+epochs = 1500              # エポック数 (学習を何回実施するか？という変数)
 learning_rate = 0.0001   # 学習率 (重みをどの程度変更するか？)
 
 
