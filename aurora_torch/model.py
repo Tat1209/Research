@@ -3,6 +3,7 @@ import numpy as np
 from time import time
 import datetime
 import torchvision
+import pandas as pd
 
 
 class Model:
@@ -20,12 +21,12 @@ class Model:
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=20, T_mult=1, eta_min=0.)
 
 
-    def fit(self, fit_aug_ratio=None, mixup_alpha=None):
+    def fit(self, fit_aug_ratio=None, mixup_alpha=None, log_itv=50):
 
         hist = dict()
         hist["Epoch"] = [i+1 for i in range(self.epochs)]
-        start = time()
 
+        start = time()
         for epoch in range(self.epochs):
             if epoch != 0:
                 stop = time()
@@ -34,7 +35,6 @@ class Model:
                 eta = (datetime.datetime.now() + datetime.timedelta(seconds=left) + datetime.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
                 t_hour, t_min = divmod(left//60, 60)
                 left = f"{int(t_hour):02d}:{int(t_min):02d}"
-
 
             # augmentationの場合分け
             if fit_aug_ratio is None: 
@@ -51,20 +51,23 @@ class Model:
 
             dl_val = self.pr.fetch_val(self.pr.tr.gen)
 
-            stats = dict()
-            stats["Loss"], stats["Acc"] = self.train_1epoch(dl_train, mixup_alpha=alpha)
-            if dl_val is not None: stats["vLoss"], stats["vAcc"] = self.val_1epoch(dl_val)
+            summary = dict()
 
-            for key, value in stats.items():
+            stats_t = self.train_1epoch(dl_train, mixup_alpha=alpha)
+            summary["Loss"], summary["Acc"] = stats_t["total_loss"], stats_t["total_corr"]
+
+            stats_v = self.val_1epoch(dl_val)
+            summary["vLoss"], summary["vAcc"] = stats_v["total_loss"], stats_v["total_corr"]
+
+            for key, value in summary.items():
                 if epoch == 0: hist[key] = [value]
                 else: hist[key].append(value)
 
-            disp_str = f"Epoch: {epoch+1:>4}/{self.epochs:>4}"
-            for key, value in stats.items(): disp_str += f"    {key}: {value:<9.7f}"
+            disp_str = f'Epoch: {epoch+1:>4}/{self.epochs:>4}'      # 本当はsummary["Epoch"][epoch]とかがいいけどだるい
+            for key, value in summary.items(): disp_str += f"    {key}: {value:<9.7f}"
             if epoch != 0: disp_str += f"    eta: {eta} (left: {left})"
 
-            n = 20
-            if (epoch+1) % n == 0 or (epoch+1) == self.epochs: print(disp_str)
+            if (epoch+1) % log_itv == 0 or (epoch+1) == self.epochs: print(disp_str)
             else: print(disp_str, end="\r")
 
         return hist
@@ -104,15 +107,19 @@ class Model:
             self.optimizer.step()                   # 重み更新して計算グラフを消す
         self.scheduler.step()
 
-        avg_loss = stats["total_loss"] / len(dl.dataset)
-        acc = stats["total_corr"] / len(dl.dataset)
+        # avg_loss = stats["total_loss"] / len(dl.dataset)
+        # acc = stats["total_corr"] / len(dl.dataset)
 
-        return avg_loss, acc
+        stats["total_loss"] /= len(dl.dataset)
+        stats["total_corr"] /= len(dl.dataset)
+
+        return stats
+        # return avg_loss, acc
 
 
     def val_1epoch(self, dl):
         self.network.eval()  # モデルを評価モードにする
-        stats = {"total_loss":0., "total_corr":0.}
+        stats = {"total_loss":0., "total_corr":0., "outputs":None, "labels":None}
 
         with torch.no_grad():
             for input_b, label_b in dl:
@@ -125,42 +132,62 @@ class Model:
                 _, pred = torch.max(output_b.detach(), dim=1)
                 stats["total_corr"] += torch.sum(pred == label_b.data).item()
 
+                output_b = output_b.detach().cpu().numpy()
+                label_b = label_b.detach().cpu().numpy()
+                if stats["outputs"] is None: stats["outputs"] = output_b
+                else: stats["outputs"] = np.concatenate((stats["outputs"], output_b), axis=0)
 
-        avg_loss = stats["total_loss"] / len(dl.dataset)
-        acc = stats["total_corr"] / len(dl.dataset)
-        return avg_loss, acc
+        stats["total_loss"] /= len(dl.dataset)
+        stats["total_corr"] /= len(dl.dataset)
+
+        return stats
 
 
-    def pred_1iter(self, dl):
-        stats = {"result":None}
-
+    def pred_1iter(self, dl, label=False):
+        stats = {"outputs":None, "labels": None}
         with torch.no_grad():
-            for input_b, _ in dl:
+            for input_b, label_b in dl:
                 input_b = input_b.to(self.device)
                 output_b = self.network(input_b)
-                if stats["result"] is None: stats["result"] = output_b.detach().cpu().numpy()
-                else: stats["result"] = np.concatenate((stats["result"], output_b.detach().cpu().numpy()), axis=0)
+                output_b = output_b.detach().cpu().numpy()
 
-        return stats["result"]
+                if stats["outputs"] is None: stats["outputs"] = output_b
+                else: stats["outputs"] = np.concatenate((stats["outputs"], output_b), axis=0)
+
+                if label:
+                    if stats["labels"] is None: stats["labels"] = label_b
+                    else: stats["labels"] = np.concatenate((stats["labels"], label_b), axis=0)
+
+        return stats
 
 
-    def pred(self, categorize=True, tta_times=1, tta_aug_ratio=None):
+    def pred(self, categorize=True, tta_times=1, tta_aug_ratio=None, val=False):
+        summary = {"outputs":None, "labels":None}
 
-        total_results = None
+        if val: fetch_t = self.pr.fetch_val
+        else: fetch_t = self.pr.fetch_test
+        label_flag = val
 
         for i in range(tta_times):
             if tta_aug_ratio is not None:
-                if i/tta_times < tta_aug_ratio: dl = self.pr.fetch_test(self.pr.tr.aug)
-                else: self.pr.fetch_test(self.pr.tr.flip_aug)
-            else: dl = self.pr.fetch_test(self.pr.tr.gen)
+                if i/tta_times < tta_aug_ratio: dl = fetch_t(self.pr.tr.aug)
+                else: fetch_t(self.pr.tr.flip_aug)
+            else: dl = fetch_t(self.pr.tr.gen)
 
-            if i == 0: total_results = self.pred_1iter(dl)
-            else: total_results += self.pred_1iter(dl)
+            stats_p = self.pred_1iter(dl, label=label_flag)
 
-        # 平均に対してsoftmaxを適用
-        result = torch.nn.functional.softmax(torch.from_numpy(total_results/tta_times), dim=1).numpy()
-        if categorize: result = np.argmax(result, axis=1)
-        return result
+            # 出力に対してsoftmaxを適用 その後に平均をとる
+            stats_p["outputs"] = torch.nn.functional.softmax(torch.from_numpy(stats_p["outputs"]), dim=1).numpy()
+            if summary["outputs"] is None: summary["outputs"] = stats_p["outputs"]
+            else: summary["outputs"] += stats_p["outputs"]
+            
+            if label_flag:
+                summary["labels"] = stats_p["labels"]
+                label_flag = False
+
+        summary["outputs"] /= tta_times
+        if categorize: summary["outputs"] = np.argmax(summary["outputs"], axis=1)
+        return summary
 
 
     # def postprocess(result, hist, model):

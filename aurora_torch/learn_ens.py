@@ -3,7 +3,7 @@ import numpy as np
 from prep import Prep
 from model import Model
 import post
-import ens
+from ens import Ens
 
 from torchvision.models import efficientnet_v2_s as net0
 # from torchvision.models import efficientnet_v2_m as net1
@@ -26,7 +26,8 @@ for i in range(num_models):
     model = Model(pr, net0(num_classes=4), epochs, learning_rate)
     model_list.append(model)
 
-ens.ens(model_list, categorize=True, fit_aug_ratio=1.0, tta_times=20, tta_aug_ratio=0.75, mixup_alpha=0.2)
+ens = Ens()
+ens.cross(model_list, categorize=True, fit_aug_ratio=1.0, tta_times=20, tta_aug_ratio=0.75, mixup_alpha=0.2)
 
 
         
