@@ -20,9 +20,9 @@ def postprocess(result, hist, model):
     
     if hist is not None: pd.DataFrame(hist).to_csv(f'competition_hist_{ft}.csv', index=False)
 
-    if model is not None:
-        save_path = f"competition_model_{ft}.pth"
-        torch.save(model.network, save_path)
+    # if model is not None:
+    #     save_path = f"competition_model_{ft}.pth"
+    #     torch.save(model.network, save_path)
             
 
 

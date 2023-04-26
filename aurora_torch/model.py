@@ -72,10 +72,33 @@ class Model:
 
     def train_1epoch(self, dl, mixup_alpha=None):
         self.network.train()  # モデルを訓練モードにする
-        stats = {"result":None, "total_loss":0, "total_corr":0.}
+        stats = {"total_loss":0., "total_corr":0.}
 
         for input_b, label_b in dl:
-            loss_b = self.flow(input_b, label_b, stats, mixup_alpha=mixup_alpha)
+            input_b = input_b.to(self.device)
+            label_b = label_b.to(self.device)
+
+            if mixup_alpha is None:
+                output_b = self.network(input_b)
+                loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
+                stats["total_loss"] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+                _, pred = torch.max(output_b.detach(), dim=1)
+                stats["total_corr"] += torch.sum(pred == label_b.data).item()
+
+            else: 
+                lmd = np.random.beta(mixup_alpha, mixup_alpha)
+                perm = torch.randperm(input_b.shape[0]).to(self.device)
+                input2_b = input_b[perm, :]
+                label2_b = label_b[perm]
+                
+                input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
+                output_b = self.network(input_b)
+                loss_b = lmd * self.loss_func(output_b, label_b)  +  (1.0 - lmd) * self.loss_func(output_b, label2_b)
+                stats["total_loss"] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+                _, pred = torch.max(output_b.detach(), dim=1)
+                stats["total_corr"] += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).cpu().numpy()
+
+
             self.optimizer.zero_grad()              # optimizerを初期化 前バッチで計算した勾配の値を0に
             loss_b.backward()                         # 誤差逆伝播 勾配計算
             self.optimizer.step()                   # 重み更新して計算グラフを消す
@@ -89,11 +112,19 @@ class Model:
 
     def val_1epoch(self, dl):
         self.network.eval()  # モデルを評価モードにする
-        stats = {"result":None, "total_loss":0, "total_corr":0.}
+        stats = {"total_loss":0., "total_corr":0.}
 
         with torch.no_grad():
             for input_b, label_b in dl:
-                _ = self.flow(input_b, label_b, stats)
+                input_b = input_b.to(self.device)
+                label_b = label_b.to(self.device)
+
+                output_b = self.network(input_b)
+                loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
+                stats["total_loss"] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+                _, pred = torch.max(output_b.detach(), dim=1)
+                stats["total_corr"] += torch.sum(pred == label_b.data).item()
+
 
         avg_loss = stats["total_loss"] / len(dl.dataset)
         acc = stats["total_corr"] / len(dl.dataset)
@@ -101,11 +132,14 @@ class Model:
 
 
     def pred_1iter(self, dl):
-        stats = {"result":np.empty((0)), "total_loss":None, "total_corr":None}
+        stats = {"result":None}
 
         with torch.no_grad():
-            for input_b, label_b in dl:
-                _ = self.flow(input_b, label_b, stats)
+            for input_b, _ in dl:
+                input_b = input_b.to(self.device)
+                output_b = self.network(input_b)
+                if stats["result"] is None: stats["result"] = output_b.detach().cpu().numpy()
+                else: stats["result"] = np.concatenate((stats["result"], output_b.detach().cpu().numpy()), axis=0)
 
         return stats["result"]
 
@@ -129,47 +163,6 @@ class Model:
         return result
 
 
-    def flow(self, input_b, label_b, stats, mixup_alpha=None):
-        input_b = input_b.to(self.device)
-        try:
-            label_b = label_b.to(self.device)
-
-            if mixup_alpha is None:
-                output_b = self.network(input_b)
-                loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
-
-            else: 
-                lmd = np.random.beta(mixup_alpha, mixup_alpha)
-                perm = torch.randperm(input_b.shape[0]).to(self.device)
-                input2_b = input_b[perm, :]
-                label2_b = label_b[perm]
-                
-                input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
-                output_b = self.network(input_b)
-                loss_b = lmd * self.loss_func(output_b, label_b)  +  (1.0 - lmd) * self.loss_func(output_b, label2_b)
-
-################################### 画像をテスト出力
-            # torchvision.transforms.ToPILImage()(input_b[0]).save('test.jpg', quality=100, subsampling=0)
-
-        except: 
-            output_b = self.network(input_b)
-            loss_b = None   # returnはダメ 結果格納できん test時の挙動
-
-            
-
-        if stats["result"] is not None: 
-            if stats["result"].size == 0: stats["result"] = output_b.detach().cpu().numpy()
-            else: stats["result"] = np.concatenate((stats["result"], output_b.detach().cpu().numpy()), axis=0)
-        if stats["total_loss"] is not None: stats["total_loss"] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
-        if stats["total_corr"] is not None:
-            _, pred = torch.max(output_b.detach(), dim=1)
-            if mixup_alpha is None:
-                stats["total_corr"] += torch.sum(pred == label_b.data).item()
-            else: stats["total_corr"] += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).cpu().numpy()
-
-        return loss_b
-    
-    
     # def postprocess(result, hist, model):
     #     test_files = []
     #     dl_test = model.pr.fetch_test(None)
