@@ -19,13 +19,10 @@ learning_rate = 0.0001   # 学習率 (重みをどの程度変更するか？)
 
 pr = Prep(data_path, batch_size, val_range=(0.2, 0.4))
 network = net(num_classes=4)
-model = Model(pr, network, epochs, learning_rate)
+model = Model(pr, network, epochs, learning_rate, log_itv=50, fit_aug_ratio=1.0, mixup_alpha=0.2, tta_times=10, tta_aug_ratio=0.8)
 
-hist = model.fit(fit_aug_ratio=1.0, mixup_alpha=0.2, log_itv=25)
-summary = model.pred(categorize=False, tta_times=10, tta_aug_ratio=0.8, val=True)
-
-print(summary["outputs"])
-print(summary["labels"])
+hist = model.fit()
+summary = model.pred(categorize=True, val=True)
 
 # post.postprocess(summary["outputs"], hist, model)
 
