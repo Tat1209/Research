@@ -23,7 +23,7 @@ num_models = 20
 model_list = []
 for i in range(num_models):
     pr = Prep(data_path, batch_size, val_range=(i/num_models, (i+1)/num_models), seed=0)
-    model = Model(pr, net0(num_classes=4), epochs, learning_rate, log_itv=100, fit_aug_ratio=1.0, mixup_alpha=0.2, tta_times=25, tta_aug_ratio=0.8)
+    model = Model(pr, net0(num_classes=4), epochs, learning_rate, log_itv=100, fit_aug_ratio=1.0, mixup_alpha=0.2, pred_times=25, tta_aug_ratio=0.8)
     model_list.append(model)
 
 ens = Ens()

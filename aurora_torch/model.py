@@ -7,7 +7,7 @@ import pandas as pd
 
 
 class Model:
-    def __init__(self, pr, network, epochs, learning_rate, log_itv=10, fit_aug_ratio=None, mixup_alpha=None, tta_times=None, tta_aug_ratio=None):
+    def __init__(self, pr, network, epochs, learning_rate, log_itv=10, fit_aug_ratio=None, mixup_alpha=None, pred_times=1, tta_aug_ratio=None): 
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu') 
 
         self.pr = pr
@@ -18,7 +18,7 @@ class Model:
         self.log_itv=log_itv
         self.fit_aug_ratio=fit_aug_ratio
         self.mixup_alpha=mixup_alpha
-        self.tta_times=tta_times
+        self.pred_times=pred_times
         self.tta_aug_ratio=tta_aug_ratio
 
         self.loss_func = torch.nn.CrossEntropyLoss()                                                          # 損失関数の設定
@@ -50,7 +50,7 @@ class Model:
             else: 
                 if epoch/self.epochs < self.fit_aug_ratio:
                     dl_train = self.pr.fetch_train(self.pr.tr.aug)
-                    mixup = True
+                    mixup = self.mixup_alpha is not None
                 else:
                     dl_train = self.pr.fetch_train(self.pr.tr.gen)
                     mixup = False
@@ -174,10 +174,11 @@ class Model:
         else: fetch_t = self.pr.fetch_test
         label_flag = val
 
-        for i in range(self.tta_times):
+        if self.pred_times is None: self.pred_times = 1
+        for i in range(self.pred_times):
             if self.tta_aug_ratio is not None:
-                if i/self.tta_times < self.tta_aug_ratio: dl = fetch_t(self.pr.tr.aug)
-                else: fetch_t(self.pr.tr.flip_aug)
+                if i/self.pred_times < self.tta_aug_ratio: dl = fetch_t(self.pr.tr.aug)
+                else: dl = fetch_t(self.pr.tr.flip_aug)
             else: dl = fetch_t(self.pr.tr.gen)
 
             stats_p = self.pred_1iter(dl, label=label_flag)
@@ -191,7 +192,7 @@ class Model:
                 summary["labels"] = stats_p["labels"]
                 label_flag = False
 
-        summary["outputs"] /= self.tta_times
+        summary["outputs"] /= self.pred_times
         if categorize: summary["outputs"] = np.argmax(summary["outputs"], axis=1)
         return summary
 
