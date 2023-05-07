@@ -202,9 +202,9 @@ class Model:
 
     def save_model(self, fname=None, fname_head="competition_model_"):
         if fname is None:
-            date = datetime.datetime.now().strftime("%m%d_%H%M%S")
+            date = datetime.now().strftime("%m%d_%H%M%S")
             if fname_head is None: fname = f"{date}.pth"
-            else: fname = f"{fname_head}{date}.pth"
+            else: fname = f"{fname_head}_{date}.pth"
         torch.save(self.network, fname)
         
     
@@ -213,36 +213,58 @@ class Model:
         else: df = pd.DataFrame(hist)
 
         if fname is None:
-            date = datetime.datetime.now().strftime("%m%d_%H%M%S")
+            date = datetime.now().strftime("%m%d_%H%M%S")
             if fname_head is None: fname = f"{date}.csv"
-            else: fname = f"{fname_head}{date}.csv"
+            else: fname = f"{fname_head}_{date}.csv"
         df.to_csv(fname, index=False)
         
     
     def result_to_csv(self, result, fname=None, fname_head="competition_result_"):
-        df = pd.DataFrame(result["outputs"], columns=range(result["outputs"].shape[1]))
+        df = pd.DataFrame()
+        df["outputs"] = result["outputs"]
         df["labels"] = result["labels"]
 
         if fname is None:
-            date = datetime.datetime.now().strftime("%m%d_%H%M%S")
+            date = datetime.now().strftime("%m%d_%H%M%S")
             if fname_head is None: fname = f"{date}.csv"
-            else: fname = f"{fname_head}{date}.csv"
+            else: fname = f"{fname_head}_{date}.csv"
         df.to_csv(fname, index=False)
         
 
     def result_to_out(self, result, fname=None, fname_head="competition_result_"):
         df = pd.DataFrame()
         df["labels"] = result["labels"]
-        df["labels"] = df["labels"].str[42:]
         df["outputs"] = result["outputs"]
 
         if fname is None:
-            date = datetime.datetime.now().strftime("%m%d_%H%M%S")
+            date = datetime.now().strftime("%m%d_%H%M%S")
             if fname_head is None: fname = f"{date}.csv"
-            else: fname = f"{fname_head}{date}.csv"
-        df.to_csv(fname, index=False, header=False)
+            else: fname = f"{fname_head}_{date}.csv"
+        df.to_csv(fname, index=False)
         
     
+    
+
+
+        
+
+    # def postprocess(result, hist, model):
+    #     test_files = []
+    #     dl_test = model.pr.fetch_test(None)
+    #     for item in iter(dl_test):
+    #         filenames = item[1]
+    #         for file in filenames: test_files.append(str(file))
+                
+    #     ft = datetime.now().strftime("%m%d_%H%M%S")
+    #     with open(f'competition_result_{ft}.csv', 'w', newline='') as f:
+    #         writer = csv.writer(f)
+    #         for i, res in enumerate(result): writer.writerow([Path(test_files[i]).name, res])
+        
+    #     if hist is not None: pd.DataFrame(hist).to_csv(f'competition_hist_{ft}.csv', index=False)
+
+    #     if model is not None:
+    #         save_path = f"competition_model_{ft}.pth"
+    #         torch.save(model.network, save_path)
 
 
 
