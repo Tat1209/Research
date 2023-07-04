@@ -7,7 +7,7 @@ import pandas as pd
 
 
 class Model:
-    def __init__(self, pr, network, epochs, learning_rate, log_itv=10, fit_aug_ratio=None, mixup_alpha=None, pred_times=1, tta_aug_ratio=None): 
+    def __init__(self, pr, tf, network, epochs, learning_rate, log_itv=10, fit_aug_ratio=None, mixup_alpha=None, pred_times=1, tta_aug_ratio=None): 
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu') 
 
         self.pr = pr
@@ -23,7 +23,7 @@ class Model:
 
         self.loss_func = torch.nn.CrossEntropyLoss()                                                          # 損失関数の設定
         self.optimizer = torch.optim.RAdam(self.network.parameters(), lr=self.learning_rate)             # 最適化手法の設定
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs)
+        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs)
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=20, T_mult=1, eta_min=0.)
 
 
@@ -112,7 +112,7 @@ class Model:
             self.optimizer.zero_grad()              # optimizerを初期化 前バッチで計算した勾配の値を0に
             loss_b.backward()                         # 誤差逆伝播 勾配計算
             self.optimizer.step()                   # 重み更新して計算グラフを消す
-        self.scheduler.step()
+        # self.scheduler.step()
 
         # avg_loss = stats["total_loss"] / len(dl.dataset)
         # acc = stats["total_corr"] / len(dl.dataset)
@@ -126,7 +126,7 @@ class Model:
 
     def val_1epoch(self, dl):
         self.network.eval()  # モデルを評価モードにする
-        stats = {"total_loss":0., "total_corr":0., "outputs":None, "labels":None}
+        stats = {"total_loss":0., "total_corr":0., "outputs":None}
 
         with torch.no_grad():
             for input_b, label_b in dl:
