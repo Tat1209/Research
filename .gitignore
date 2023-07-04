@@ -4,3 +4,5 @@
 *.pth
 *.csv
 *.zip
+data/
+ai-step/competition01_gray_128x128/
