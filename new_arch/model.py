@@ -8,7 +8,7 @@ import polars as pl
 
 
 class Model:
-    def __init__(self, pr, network, learning_rate, loss_func, optimizer, model_weight=None, hist=None):
+    def __init__(self, pr, network, learning_rate, loss_func, optimizer, hist=None):
         self.pr = pr
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu') 
 
@@ -123,10 +123,6 @@ class Model:
                     else: labels = np.concatenate((labels, label_b), axis=0)
                     
                     
-    # def store_log(self, stats):
-        # self.log_buf.update(stats)
-        
-    
     def logging(self):
         if self.hist is None: 
             self.log_buf = {"epoch":1, **self.log_buf}
@@ -165,7 +161,7 @@ class Model:
             date = datetime.datetime.now().strftime("%m%d_%H%M%S")
             if fname_head is None: fname = f"{date}.pth"
             else: fname = f"{fname_head}{date}.pth"
-        torch.save(self.network, fname)
+        torch.save(self.network.state_dict(), fname)
         
     
     def hist_to_csv(self, fname=None, fname_head="hist_"):
