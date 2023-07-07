@@ -23,6 +23,7 @@ class Trans:
         self.norm = [transforms.Normalize(mean=info["mean"], std=info["std"])]
 
         self.rotate_flip = [transforms.RandomRotation(degrees=(0, 360), interpolation=InterpolationMode.BICUBIC), transforms.RandomHorizontalFlip(p=0.5)]
+        self.light_aug = [transforms.RandomRotation(degrees=(-45, 45), interpolation=InterpolationMode.BICUBIC), transforms.RandomHorizontalFlip(p=0.5)]
         self.flip90 = [transforms.Lambda(lambda image: rotate(image, 90))]
         self.flip180 = [transforms.Lambda(lambda image: rotate(image, 180))]
         self.flip270 = [transforms.Lambda(lambda image: rotate(image, 270))]
@@ -35,6 +36,7 @@ class Trans:
         self.base_tsr = self.compose(self.base + self.tsr)
         self.gen = self.compose(self.base + self.tsr + self.norm)
         self.aug = self.compose(self.base + self.rotate_flip + self.tsr + self.norm)
+        self.laug = self.compose(self.base + self.light_aug + self.tsr + self.norm)
         self.flip_aug = self.compose(self.base + self.rflip + self.tsr + self.norm)
 
 

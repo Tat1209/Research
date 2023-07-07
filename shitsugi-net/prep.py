@@ -11,7 +11,7 @@ import pandas as pd
 
 
 class Prep:
-    def __init__(self, batch_size, val_range=0., seed=None):
+    def __init__(self, batch_size, val_range=None, seed=None):
         self.batch_size = batch_size
         
         base_ds = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=None)
@@ -21,7 +21,8 @@ class Prep:
         random.seed(seed)
         random.shuffle(self.rand_idxs)
 
-        if not isinstance(val_range, tuple): self.val_range = (0, 0)
+        if val_range is None: self.val_range = (0, 0)
+        elif not isinstance(val_range, tuple): self.val_range = (0, val_range)
         else: self.val_range = val_range
 
 
