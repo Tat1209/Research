@@ -25,10 +25,11 @@ optimizer = torch.optim.RAdam(network.parameters(), lr=learning_rate)
 model = Model(pr, network, learning_rate, loss_func, optimizer)
 
 for e in range(epochs):
-    train_stats = model.train_1epoch(tr.gen, mixup=True)
-    val_stats = model.val_1epoch(tr.gen)
+    model.train_1epoch(tr.gen, mixup=True)
+    model.val_1epoch(tr.gen)
 
-    model.printlog(e, epochs, train_stats, val_stats, log_itv=5)
+    model.logging()
+    model.printlog(e, epochs, log_itv=5)
     
 model.pred_1iter(tr.gen)
 
