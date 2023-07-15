@@ -15,23 +15,22 @@ tr = Trans(info={'mean': [0.5070751309394836, 0.48654884099960327, 0.44091784954
 
 for i in range(1):
     batch_size = 400        # バッチサイズ (並列して学習を実施する数)  
-    epochs = 200              # エポック数 (学習を何回実施するか？という変数)
-    learning_rate = 0.001   # 学習率 (重みをどの程度変更するか？)
-    weight_decay = 0.001
+    epochs = 120              # エポック数 (学習を何回実施するか？という変数)
+    learning_rate = 0.0003   # 学習率 (重みをどの程度変更するか？)
 
     # network = net(3, 100).to(torch.device("cuda"))
     network = net()
+    learning_rate = learning_rate
     loss_func = torch.nn.CrossEntropyLoss()  # 損失関数の設定
-    optimizer = torch.optim.Adam(network.parameters(), lr=learning_rate, weight_decay=weight_decay)    
+    optimizer = torch.optim.Adam(network.parameters(), lr=learning_rate)    
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1, verbose=False)
-    # scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=learning_rate, epochs=epochs, steps_per_epoch=45000//batch_size + 1)
 
-    model_name = f"cifar_base"
+    model_name = "crop_misup_model{i}"
     pr = Prep(batch_size, val_range=(0.9, 1.00), seed=0)
     model = Model(pr, network, learning_rate, loss_func, optimizer)
 
     for e in range(epochs):
-        model.train_1epoch(tr.crop, mixup=True)
+        model.train_1epoch(tr.crop, mixup=False)
         model.val_1epoch(tr.gen)
 
         model.logging()

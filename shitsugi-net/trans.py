@@ -20,10 +20,11 @@ class Trans:
         # baseには、全ての訓練に対して適用する処理を記述する。
         self.base = []
         self.tsr = [transforms.ToTensor()]
-        self.norm = [transforms.Normalize(mean=info["mean"], std=info["std"])]
+        self.norm = [transforms.Normalize(mean=info["mean"], std=info["std"], inplace=True)]
 
         self.rotate_flip = [transforms.RandomRotation(degrees=(0, 360), interpolation=InterpolationMode.BICUBIC), transforms.RandomHorizontalFlip(p=0.5)]
         self.light_aug = [transforms.RandomRotation(degrees=(-45, 45), interpolation=InterpolationMode.BICUBIC), transforms.RandomHorizontalFlip(p=0.5)]
+        self.crop = [transforms.RandomCrop(32, padding=4,padding_mode='reflect'), transforms.RandomHorizontalFlip()]
         self.flip90 = [transforms.Lambda(lambda image: rotate(image, 90))]
         self.flip180 = [transforms.Lambda(lambda image: rotate(image, 180))]
         self.flip270 = [transforms.Lambda(lambda image: rotate(image, 270))]
@@ -36,6 +37,7 @@ class Trans:
         self.base_tsr = self.compose(self.base + self.tsr)
         self.gen = self.compose(self.base + self.tsr + self.norm)
         self.aug = self.compose(self.base + self.rotate_flip + self.tsr + self.norm)
+        self.crop = self.compose(self.base + self.crop + self.tsr + self.norm)
         self.laug = self.compose(self.base + self.light_aug + self.tsr + self.norm)
         self.flip_aug = self.compose(self.base + self.rflip + self.tsr + self.norm)
 

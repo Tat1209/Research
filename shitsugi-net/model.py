@@ -8,7 +8,7 @@ import polars as pl
 
 
 class Model:
-    def __init__(self, pr, network, learning_rate, loss_func, optimizer):
+    def __init__(self, pr, network, learning_rate, loss_func, optimizer, scheduler=None):
         self.pr = pr
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu') 
 
@@ -17,6 +17,7 @@ class Model:
 
         self.loss_func = loss_func
         self.optimizer = optimizer
+        self.scheduler = scheduler
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs)
 
         self.hist = None
@@ -59,8 +60,7 @@ class Model:
             loss_b.backward()                         # 誤差逆伝播 勾配計算
             self.optimizer.step()                   # 重み更新して計算グラフを消す
             
-        try: self.scheduler.step()
-        except: pass
+        if self.scheduler is not None: self.scheduler.step()
 
         stats["Loss"] /= len(dl.dataset)
         stats["Acc"] /= len(dl.dataset)

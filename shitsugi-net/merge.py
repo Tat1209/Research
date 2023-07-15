@@ -11,14 +11,14 @@ tr = Trans(info={'mean': [0.5070751309394836, 0.48654884099960327, 0.44091784954
 
 batch_size = 250        # バッチサイズ (並列して学習を実施する数)  
 epochs = 1000              # エポック数 (学習を何回実施するか？という変数)
-learning_rate = 0.0001   # 学習率 (重みをどの程度変更するか？)
+learning_rate = 0.001   # 学習率 (重みをどの程度変更するか？)
 
 network0 = net()
-network0.load_state_dict(torch.load('model0.ckpt')["network_sd"])
+network0.load_state_dict(torch.load('model0_500.ckpt')["network_sd"])
 state_dict0 = network0.state_dict()
 
 network1 = net()
-network1.load_state_dict(torch.load('model1.ckpt')["network_sd"])
+network1.load_state_dict(torch.load('model1_500.ckpt')["network_sd"])
 state_dict1 = network1.state_dict()
 
 
@@ -36,16 +36,9 @@ optimizer = torch.optim.RAdam(network.parameters(), lr=learning_rate)
 
 pr = Prep(batch_size, val_range=(0.9, 1.00), seed=0)
 model = Model(pr, network, learning_rate, loss_func, optimizer)
-model.load_ckpt("model0.ckpt")
+model.load_ckpt("model0_500.ckpt")
 
 model.network.load_state_dict(state_dict_ave)
-# model.hist.fill_null()
-
-
-print(state_dict0['layer3.1.bn1.weight'][:10])
-print(state_dict1['layer3.1.bn1.weight'][:10])
-print(network.state_dict()['layer3.1.bn1.weight'][:10])
-
 
 
 for e in range(epochs):
@@ -55,5 +48,5 @@ for e in range(epochs):
     model.logging()
     model.printlog(e, epochs, log_itv=5)
     
-model.hist_to_csv("modelC.csv")
+model.hist_to_csv("modelC_500.csv")
 

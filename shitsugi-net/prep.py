@@ -31,7 +31,7 @@ class Prep:
         idx = (int(self.val_range[0] * self.data_num), int(self.val_range[1] * self.data_num))
         ds = torch.utils.data.Subset(ds, indices=self.rand_idxs[:idx[0]]+self.rand_idxs[idx[1]:])
         dl = self.fetch_loader(ds)
-
+        
         return dl
 
 
