@@ -8,7 +8,8 @@ import polars as pl
 
 
 class Model:
-    def __init__(self, network, loss_func, optimizer, scheduler=None):
+    def __init__(self, pr, network, loss_func, optimizer, scheduler=None):
+        self.pr = pr
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu') 
 
         self.network = network.to(self.device)                                                        
@@ -16,16 +17,18 @@ class Model:
         self.loss_func = loss_func
         self.optimizer = optimizer
         self.scheduler = scheduler
+        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs)
 
         self.hist = None
         self.log_buf = dict()
         self.start = None
 
 
-    def train_1epoch(self, dl, mixup=False, mixup_alpha=0.2, log_loss="Loss", log_acc="Acc"):
+    def train_1epoch(self, tf, mixup=False, mixup_alpha=0.2):
+        dl = self.pr.fetch_train(tf)
         self.network.train()  # モデルを訓練モードにする
         
-        stats = {log_loss:0.0, log_acc:0.0}
+        stats = {"Loss":0.0, "Acc":0.0}
         
         for input_b, label_b in dl:
             input_b = input_b.to(self.device)
@@ -40,16 +43,16 @@ class Model:
                 input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
                 output_b = self.network(input_b)
                 loss_b = lmd * self.loss_func(output_b, label_b)  +  (1.0 - lmd) * self.loss_func(output_b, label2_b)
-                stats[log_loss] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+                stats["Loss"] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
                 _, pred = torch.max(output_b.detach(), dim=1)
-                stats[log_acc] += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).cpu().numpy()
+                stats["Acc"] += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).cpu().numpy()
 
             else: 
                 output_b = self.network(input_b)
                 loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
-                stats[log_loss] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+                stats["Loss"] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
                 _, pred = torch.max(output_b.detach(), dim=1)
-                stats[log_acc] += torch.sum(pred == label_b.data).item()
+                stats["Acc"] += torch.sum(pred == label_b.data).item()
 
 
             self.optimizer.zero_grad()              # optimizerを初期化 前バッチで計算した勾配の値を0に
@@ -58,15 +61,15 @@ class Model:
             
         if self.scheduler is not None: self.scheduler.step()
 
-        stats[log_loss] /= len(dl.dataset)
-        stats[log_acc] /= len(dl.dataset)
+        stats["Loss"] /= len(dl.dataset)
+        stats["Acc"] /= len(dl.dataset)
         
         self.log_buf.update(stats)
 
+    def val_1epoch(self, tf):
+        stats = {"vLoss":0.0, "vAcc":0.0}
 
-    def val_1epoch(self, dl, log_loss="vLoss", log_acc="vAcc"):
-        stats = {log_loss:0.0, log_acc:0.0}
-
+        dl = self.pr.fetch_val(tf)
         self.network.eval()  # モデルを評価モードにする
 
         outputs = None
@@ -78,9 +81,9 @@ class Model:
 
                 output_b = self.network(input_b)
                 loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
-                stats[log_loss] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+                stats["vLoss"] += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
                 _, pred = torch.max(output_b.detach(), dim=1)
-                stats[log_acc] += torch.sum(pred == label_b.data).item()
+                stats["vAcc"] += torch.sum(pred == label_b.data).item()
 
                 output_b = output_b.detach().cpu().numpy()
                 label_b = label_b.detach().cpu().numpy()
@@ -89,14 +92,15 @@ class Model:
                 else: outputs = np.concatenate((outputs, output_b), axis=0)
 
         if len(dl.dataset) == 0: return
-        stats[log_loss] /= len(dl.dataset)
-        stats[log_acc] /= len(dl.dataset)
+        stats["vLoss"] /= len(dl.dataset)
+        stats["vAcc"] /= len(dl.dataset)
 
         self.log_buf.update(stats)
 
 
-    def pred_1iter(self, dl, label=False):
+    def pred_1iter(self, tf, label=False):
         # stats = {"tLoss":0.0, "tAcc":0.0}
+        dl = self.pr.fetch_test(tf)
         self.network.eval()  # モデルを評価モードにする
         
         outputs = None

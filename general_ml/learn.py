@@ -22,8 +22,8 @@ tr = Trans(info={'mean': [0.5070751309394836, 0.48654884099960327, 0.44091784954
 model_name = "cifar_base"
 
 batch_size = 400        # バッチサイズ (並列して学習を実施する数)  
-epochs = 400              # エポック数 (学習を何回実施するか？という変数)
-learning_rate = 0.001   # 学習率 (重みをどの程度変更するか？)
+epochs = 10              # エポック数 (学習を何回実施するか？という変数)
+learning_rate = 0.0002   # 学習率 (重みをどの程度変更するか？)
 weight_decay = 0.001
 
 network = net()
@@ -33,12 +33,11 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, 
 
 
 pr = Prep(batch_size)
-model = Model(network, loss_func, optimizer)
+model = Model(pr, network, loss_func, optimizer)
 
 for e in range(epochs):
-    model.train_1epoch(pr.train(tr.crop), mixup=True)
-    model.val_1epoch(pr.val(tr.gen))
-    # model.val_1epoch(pr.val_in(tr.gen), log_loss="iLoss", log_acc="iAcc")
+    model.train_1epoch(tr.crop, mixup=True)
+    model.val_1epoch(tr.gen)
 
     model.logging()
     model.printlog(e, epochs, log_itv=5)
@@ -49,11 +48,12 @@ model.save_ckpt(f"{model_name}.ckpt")
 model.hist_to_csv(f"{model_name}.csv")
     
 
+
 model_name = "cifar_ft"
 
 batch_size = 400        # バッチサイズ (並列して学習を実施する数)  
-epochs = 400              # エポック数 (学習を何回実施するか？という変数)
-learning_rate = 0.0001   # 学習率 (重みをどの程度変更するか？)
+epochs = 10              # エポック数 (学習を何回実施するか？という変数)
+learning_rate = 0.0002   # 学習率 (重みをどの程度変更するか？)
 weight_decay = 0.001
 
 network = net(pretrained=True)
@@ -63,11 +63,11 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, 
 
 
 pr = Prep(batch_size)
-model = Model(network, loss_func, optimizer)
+model = Model(pr, network, loss_func, optimizer)
 
 for e in range(epochs):
-    model.train_1epoch(pr.train(tr.crop), mixup=True)
-    model.val_1epoch(pr.val(tr.gen))
+    model.train_1epoch(tr.crop, mixup=True)
+    model.val_1epoch(tr.gen)
 
     model.logging()
     model.printlog(e, epochs, log_itv=5)
@@ -82,8 +82,8 @@ model.hist_to_csv(f"{model_name}.csv")
 model_name = f"cifar_cifar"
 
 batch_size = 400        # バッチサイズ (並列して学習を実施する数)  
-epochs = 400              # エポック数 (学習を何回実施するか？という変数)
-learning_rate = 0.001   # 学習率 (重みをどの程度変更するか？)
+epochs = 10              # エポック数 (学習を何回実施するか？という変数)
+learning_rate = 0.0001   # 学習率 (重みをどの程度変更するか？)
 weight_decay = 0.001
 
 network = net(pretrained=True)
@@ -91,17 +91,18 @@ loss_func = torch.nn.CrossEntropyLoss()  # 損失関数の設定
 optimizer = torch.optim.Adam(network.parameters(), lr=learning_rate, weight_decay=weight_decay)    
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1, verbose=False)
 
-network_m = net()
-network_m.load_state_dict(torch.load('cifar_base.ckpt')["network_sd"])
+network_ft = net()
+network_ft.load_state_dict(torch.load('cifar_base.ckpt')["network_sd"])
+
 
 pr = Prep(batch_size)
-model = Model(network, loss_func, optimizer)
+model = Model(pr, network, loss_func, optimizer)
 
 for e in range(epochs):
-    if (e) % 10 == 0: model.network.load_state_dict(merge_sd(model.network.to("cuda").state_dict(), network_m.to("cuda").state_dict()))
+    model.train_1epoch(tr.crop, mixup=True)
+    model.val_1epoch(tr.gen)
 
-    model.train_1epoch(pr.train(tr.crop), mixup=True)
-    model.val_1epoch(pr.val(tr.gen))
+    if (e+1) % 10 == 0: model.network.load_state_dict(merge_sd(model.network.state_dict()))
 
     model.logging()
     model.printlog(e, epochs, log_itv=5)
@@ -115,10 +116,9 @@ model.hist_to_csv(f"{model_name}.csv")
 
 model_name = f"cifar_image"
 
-
 batch_size = 400        # バッチサイズ (並列して学習を実施する数)  
-epochs = 400              # エポック数 (学習を何回実施するか？という変数)
-learning_rate = 0.001   # 学習率 (重みをどの程度変更するか？)
+epochs = 10              # エポック数 (学習を何回実施するか？という変数)
+learning_rate = 0.0001   # 学習率 (重みをどの程度変更するか？)
 weight_decay = 0.001
 
 network = net(pretrained=True)
@@ -126,19 +126,21 @@ loss_func = torch.nn.CrossEntropyLoss()  # 損失関数の設定
 optimizer = torch.optim.Adam(network.parameters(), lr=learning_rate, weight_decay=weight_decay)    
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1, verbose=False)
 
-network_m = net()
-network_m.load_state_dict(torch.load('cifar_ft.ckpt')["network_sd"])
+network_ft = net()
+network_ft.load_state_dict(torch.load('cifar_ft.ckpt')["network_sd"])
 pr = Prep(batch_size)
-model = Model(network, loss_func, optimizer)
+model = Model(pr, network, loss_func, optimizer)
 
 for e in range(epochs):
-    if (e) % 10 == 0: model.network.load_state_dict(merge_sd(model.network.to("cuda").state_dict(), network_m.to("cuda").state_dict()))
+    model.train_1epoch(tr.crop, mixup=True)
+    model.val_1epoch(tr.gen)
 
-    model.train_1epoch(pr.train(tr.crop), mixup=True)
-    model.val_1epoch(pr.val(tr.gen))
+    if (e+1) % 10 == 0: model.network.load_state_dict(merge_sd(model.network.state_dict()))
 
     model.logging()
     model.printlog(e, epochs, log_itv=5)
+    
+    # if (e+1) % 100 == 0: model.save_ckpt(f"model{i}_{e+1}.ckpt")
     
 model.save_ckpt(f"{model_name}.ckpt")
 model.hist_to_csv(f"{model_name}.csv")
