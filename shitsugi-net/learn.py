@@ -56,7 +56,7 @@ epochs = 400              # エポック数 (学習を何回実施するか？�
 learning_rate = 0.0001   # 学習率 (重みをどの程度変更するか？)
 weight_decay = 0.001
 
-network = net(pretrained=True)
+network = net()
 loss_func = torch.nn.CrossEntropyLoss()  # 損失関数の設定
 optimizer = torch.optim.Adam(network.parameters(), lr=learning_rate, weight_decay=weight_decay)    
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1)
@@ -86,7 +86,7 @@ epochs = 400              # エポック数 (学習を何回実施するか？�
 learning_rate = 0.001   # 学習率 (重みをどの程度変更するか？)
 weight_decay = 0.001
 
-network = net(pretrained=True)
+network = net()
 loss_func = torch.nn.CrossEntropyLoss()  # 損失関数の設定
 optimizer = torch.optim.Adam(network.parameters(), lr=learning_rate, weight_decay=weight_decay)    
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1, verbose=False)
@@ -121,7 +121,7 @@ epochs = 400              # エポック数 (学習を何回実施するか？�
 learning_rate = 0.001   # 学習率 (重みをどの程度変更するか？)
 weight_decay = 0.001
 
-network = net(pretrained=True)
+network = net()
 loss_func = torch.nn.CrossEntropyLoss()  # 損失関数の設定
 optimizer = torch.optim.Adam(network.parameters(), lr=learning_rate, weight_decay=weight_decay)    
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1, verbose=False)
