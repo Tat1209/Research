@@ -117,7 +117,7 @@ class Model:
                     else: labels = np.concatenate((labels, label_b), axis=0)
                     
                     
-    def logging(self, log_dict):
+    def log_met(self, log_dict):
         if self.hist is None: self.hist = pl.DataFrame(log_dict)
         else: self.hist = pl.concat([self.hist, pl.DataFrame(log_dict)], how="diagonal")
         

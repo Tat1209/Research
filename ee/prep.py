@@ -1,29 +1,21 @@
-import torch
-import torchvision
-from torchvision import transforms
-from torchvision.transforms import InterpolationMode
-from PIL import Image
-from PIL import ImageDraw
-import pandas as pd
-
 import random
 
-
 import torch
-from torchvision import transforms
+import torchvision
 
 
 class Prep:
-    def __init__(self, val_range=None, seed=None):
+    def __init__(self, root=None, seed=None):
+        self.root = root
         self.seed = seed
 
 
     def detasets(self, ds_name, transform):
         match(ds_name): 
-            case "cifar_train": return torchvision.datasets.CIFAR100(root='/home/haselab/Documents/tat/app/shitsugi-net/data', train=True, download=False, transform=transform)
-            case "cifar_val": return torchvision.datasets.CIFAR100(root='/home/haselab/Documents/tat/app/shitsugi-net/data', train=False, download=False, transform=transform)
-            case "caltech": return torchvision.datasets.Caltech101(root="/home/haselab/Documents/tat/app/shitsugi-net/data", target_type="category", transform=transform, download=False)
-            case "imagenet": return torchvision.datasets.ImageNet(root="/home/haselab/Documents/tat/app/shitsugi-net/data", split='val', transform=transform)
+            case "cifar_train": return torchvision.datasets.CIFAR100(root=self.root, train=True, download=False, transform=transform)
+            case "cifar_val": return torchvision.datasets.CIFAR100(root=self.root, train=False, download=False, transform=transform)
+            case "caltech": return torchvision.datasets.Caltech101(root=self.root, target_type="category", transform=transform, download=False)
+            case "imagenet": return torchvision.datasets.ImageNet(root=self.root, split='val', transform=transform)
 
             case _: raise Exception("Invalid name.")
 
@@ -37,13 +29,13 @@ class Prep:
             if isinstance(in_range, float): in_range = (0, in_range)
             idx_range = (int(in_range[0] * data_num), int(in_range[1] * data_num))
             indices = idx_list[idx_range[0]:idx_range[1]]
-            sds = torch.utils.data.Subset(ds, indices=indices)
 
         else:
             if isinstance(ex_range, float): ex_range = (0, ex_range)
             idx_range = (int(ex_range[0] * data_num), int(ex_range[1] * data_num))
             indices = idx_list[:idx_range[0]]+idx_list[idx_range[1]:]
-            sds = torch.utils.data.Subset(ds, indices=indices)
+
+        sds = torch.utils.data.Subset(ds, indices=indices)
 
         # print(len(sds), indices[:5])
         dl = self.fetch_loader(sds, batch_size)
