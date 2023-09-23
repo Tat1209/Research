@@ -1,9 +1,4 @@
-*.jpg
-*.pyc
-*.h5
-*.pth
-*.csv
-*.zip
+src/
+__pycache__/
+
 *.ckpt
-data/
-ai-step/competition01_gray_128x128/
