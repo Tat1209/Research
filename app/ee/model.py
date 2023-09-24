@@ -126,8 +126,16 @@ class Model:
         if self.hist is None: return 0
         else: return self.hist[-1]['epoch'][0]
 
+
+    def get_last_met(self, to_dict=False):
+        if self.hist is None: return None
+        else:
+            met = self.hist[-1]
+            if to_dict: met = {k: v[0] for k, v in met.to_dict(as_series=False).items()}
+        return met
+
     
-    def printlog(self, log_dict, e, epochs, log_itv=10):
+    def printlog(self, log_dict, e, epochs, itv=10):
         if e == 0: self.start_time = time()
         else:
             stop_time = time()
@@ -145,7 +153,7 @@ class Model:
             except: pass
         if e != 0: disp_str += f"    eta: {eta} (left: {left})"
 
-        if (e+1) % log_itv == 0 or (e+1) == epochs: print(disp_str)
+        if (e+1) % itv == 0 or (e+1) == epochs: print(disp_str)
         else: print(disp_str, end="\r")
 
 
