@@ -237,12 +237,10 @@ class ResNet(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         fc_in = nb_fils * 8 * block.expansion
         fc_out = num_classes
-        # self.fc = nn.Linear(fc_in, fc_out, groups=self.groups)
-        # self.fc = nn.Linear(nb_fils * 8 * block.expansion, num_classes, groups=self.groups)
+        # self.fc = nn.Linear(fc_in, fc_out)
         self.fc = nn.Sequential(
-                # View((-1, fc_in * self.groups, 1)),
-                View((-1, 1, 1)),
-                nn.Conv2d(fc_in * self.groups, fc_out * self.groups, kernel_size=1, bias=False, groups=self.groups),
+                View((-1, 1)),
+                nn.Conv1d(fc_in * self.groups, fc_out * self.groups, kernel_size=1, bias=True, groups=self.groups),
                 View((-1,))
                 )
 

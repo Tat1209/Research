@@ -11,9 +11,10 @@ class Prep:
 
 
     def detasets(self, ds_name, transform):
+        download=False
         match(ds_name): 
-            case "cifar_train": return torchvision.datasets.CIFAR100(root=self.root, train=True, download=False, transform=transform)
-            case "cifar_val": return torchvision.datasets.CIFAR100(root=self.root, train=False, download=False, transform=transform)
+            case "cifar_train": return torchvision.datasets.CIFAR100(root=self.root, train=True, download=download, transform=transform)
+            case "cifar_val": return torchvision.datasets.CIFAR100(root=self.root, train=False, download=download, transform=transform)
             case "caltech": return torchvision.datasets.Caltech101(root=self.root, target_type="category", transform=transform, download=False)
             case "imagenet": return torchvision.datasets.ImageNet(root=self.root, split='val', transform=transform)
 
