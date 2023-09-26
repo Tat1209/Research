@@ -9,31 +9,24 @@ import torch.nn as nn
 
 
 class Model:
-    def __init__(self, network, loss_func, optimizer=None, scheduler=None, device=None):
+    def __init__(self, network, loss_func, device=None, optimizer=None, scheduler=None):
         if device is None: self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu') 
         else: self.device = device
 
-        if isinstance(network, list): self.network = [n.to(self.device) for n in network]
-        else: self.network = [network]
+        self.network = network.to(self.device)                                                        
 
         self.loss_func = loss_func
-
-        if isinstance(optimizer, list): self.optimizer = optimizer
-        else: self.optimezer = [optimizer]
-
-        if isinstance(scheduler, list): self.scheduler = scheduler
-        else: self.scheduler = [scheduler]
+        self.optimizer = optimizer
+        self.scheduler = scheduler
 
         self.hist = None
         self.start_time = None
 
 
     def train_1epoch(self, dl, mixup=False, ret_met=None,  mixup_alpha=0.2):
+        self.network.train()  # モデルを訓練モードにする
         loss = 0.0
         acc = 0.0
-
-        # self.network.train()
-        for n in self.network: n.train()  # モデルを訓練モードにする
         
         for input_b, label_b in dl:
             input_b = input_b.to(self.device)
@@ -46,31 +39,25 @@ class Model:
                 label2_b = label_b[perm]
                 
                 input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
-                # output_b = self.network(input_b)
-                output_b = torch.sum(torch.stack([n(input_b) for n in self.network]), dim=0) / len(self.network)
-                
+                output_b = self.network(input_b)
                 loss_b = lmd * self.loss_func(output_b, label_b)  +  (1.0 - lmd) * self.loss_func(output_b, label2_b)
                 loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
                 _, pred = torch.max(output_b.detach(), dim=1)
                 acc += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).item()
 
             else: 
-                # output_b = self.network(input_b)
-                output_b = torch.sum(torch.stack([n(input_b) for n in self.network]), dim=0) / len(self.network)
+                output_b = self.network(input_b)
                 loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
                 loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
                 _, pred = torch.max(output_b.detach(), dim=1)
                 acc += torch.sum(pred == label_b.data).item()
 
 
-            # self.optimizer.zero_grad()              # optimizerを初期化 前バッチで計算した勾配の値を0に
-            for o in self.optimizer: o.zero_grad()
+            self.optimizer.zero_grad()              # optimizerを初期化 前バッチで計算した勾配の値を0に
             loss_b.backward()                         # 誤差逆伝播 勾配計算
-            # self.optimizer.step()                   # 重み更新して計算グラフを消す
-            for o in self.optimizer: o.step()
+            self.optimizer.step()                   # 重み更新して計算グラフを消す
             
-        for s in self.scheduler:
-            if s is not None: s.step()
+        if self.scheduler is not None: self.scheduler.step()
 
         loss /= len(dl.dataset)
         acc /= len(dl.dataset)
@@ -82,20 +69,26 @@ class Model:
         loss = 0.0
         acc = 0.0
 
-        # self.network.eval()  # モデルを評価モードにする
-        for n in self.network: n.eval()  # モデルを訓練モードにする
+        self.network.eval()  # モデルを評価モードにする
+
+        outputs = None
 
         with torch.no_grad():
             for input_b, label_b in dl:
                 input_b = input_b.to(self.device)
                 label_b = label_b.to(self.device)
 
-                # output_b = self.network(input_b)
-                output_b = torch.sum(torch.stack([n(input_b) for n in self.network]), dim=0) / len(self.network)
+                output_b = self.network(input_b)
                 loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
                 loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
                 _, pred = torch.max(output_b.detach(), dim=1)
                 acc += torch.sum(pred == label_b.data).item()
+
+                output_b = output_b.detach().cpu().numpy()
+                label_b = label_b.detach().cpu().numpy()
+
+                if outputs is None: outputs = output_b
+                else: outputs = np.concatenate((outputs, output_b), axis=0)
 
         if len(dl.dataset) == 0: return
         loss /= len(dl.dataset)
@@ -104,24 +97,24 @@ class Model:
         return loss, acc
 
 
-    # def pred_1iter(self, dl, label=False):
-    #     self.network.eval()  # モデルを評価モードにする
+    def pred_1iter(self, dl, label=False):
+        self.network.eval()  # モデルを評価モードにする
         
-    #     outputs = None
-    #     labels = None
+        outputs = None
+        labels = None
         
-    #     with torch.no_grad():
-    #         for input_b, label_b in dl:
-    #             input_b = input_b.to(self.device)
-    #             output_b = self.network(input_b)
-    #             output_b = output_b.detach().cpu().numpy()
+        with torch.no_grad():
+            for input_b, label_b in dl:
+                input_b = input_b.to(self.device)
+                output_b = self.network(input_b)
+                output_b = output_b.detach().cpu().numpy()
 
-    #             if outputs is None: outputs = output_b
-    #             else: outputs = np.concatenate((outputs, output_b), axis=0)
+                if outputs is None: outputs = output_b
+                else: outputs = np.concatenate((outputs, output_b), axis=0)
 
-    #             if label:
-    #                 if labels is None: labels = label_b
-    #                 else: labels = np.concatenate((labels, label_b), axis=0)
+                if label:
+                    if labels is None: labels = label_b
+                    else: labels = np.concatenate((labels, label_b), axis=0)
                     
                     
     def log_met(self, log_dict):
