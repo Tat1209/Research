@@ -1,4 +1,6 @@
 assets/
 __pycache__/
+mlruns/
 
 *.ckpt
+*.csv

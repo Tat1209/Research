@@ -8,122 +8,14 @@ import torch.nn as nn
 
 
 
-class Model:
-    def __init__(self, network, loss_func, optimizer=None, scheduler=None, device=None):
-        if device is None: self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu') 
+class Trainer:
+    def __init__(self, device):
+        if device is None: self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         else: self.device = device
-
-        if isinstance(network, list): self.network = [n.to(self.device) for n in network]
-        else: self.network = [network]
-
-        self.loss_func = loss_func
-
-        if isinstance(optimizer, list): self.optimizer = optimizer
-        else: self.optimezer = [optimizer]
-
-        if isinstance(scheduler, list): self.scheduler = scheduler
-        else: self.scheduler = [scheduler]
-
         self.hist = None
         self.start_time = None
 
 
-    def train_1epoch(self, dl, mixup=False, ret_met=None,  mixup_alpha=0.2):
-        loss = 0.0
-        acc = 0.0
-
-        # self.network.train()
-        for n in self.network: n.train()  # モデルを訓練モードにする
-        
-        for input_b, label_b in dl:
-            input_b = input_b.to(self.device)
-            label_b = label_b.to(self.device)
-
-            if mixup:
-                lmd = np.random.beta(mixup_alpha, mixup_alpha)
-                perm = torch.randperm(input_b.shape[0]).to(self.device)
-                input2_b = input_b[perm, :]
-                label2_b = label_b[perm]
-                
-                input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
-                # output_b = self.network(input_b)
-                output_b = torch.sum(torch.stack([n(input_b) for n in self.network]), dim=0) / len(self.network)
-                
-                loss_b = lmd * self.loss_func(output_b, label_b)  +  (1.0 - lmd) * self.loss_func(output_b, label2_b)
-                loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
-                _, pred = torch.max(output_b.detach(), dim=1)
-                acc += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).item()
-
-            else: 
-                # output_b = self.network(input_b)
-                output_b = torch.sum(torch.stack([n(input_b) for n in self.network]), dim=0) / len(self.network)
-                loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
-                loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
-                _, pred = torch.max(output_b.detach(), dim=1)
-                acc += torch.sum(pred == label_b.data).item()
-
-
-            # self.optimizer.zero_grad()              # optimizerを初期化 前バッチで計算した勾配の値を0に
-            for o in self.optimizer: o.zero_grad()
-            loss_b.backward()                         # 誤差逆伝播 勾配計算
-            # self.optimizer.step()                   # 重み更新して計算グラフを消す
-            for o in self.optimizer: o.step()
-            
-        for s in self.scheduler:
-            if s is not None: s.step()
-
-        loss /= len(dl.dataset)
-        acc /= len(dl.dataset)
-        
-        return loss, acc
-
-
-    def val_1epoch(self, dl):
-        loss = 0.0
-        acc = 0.0
-
-        # self.network.eval()  # モデルを評価モードにする
-        for n in self.network: n.eval()  # モデルを訓練モードにする
-
-        with torch.no_grad():
-            for input_b, label_b in dl:
-                input_b = input_b.to(self.device)
-                label_b = label_b.to(self.device)
-
-                # output_b = self.network(input_b)
-                output_b = torch.sum(torch.stack([n(input_b) for n in self.network]), dim=0) / len(self.network)
-                loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
-                loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
-                _, pred = torch.max(output_b.detach(), dim=1)
-                acc += torch.sum(pred == label_b.data).item()
-
-        if len(dl.dataset) == 0: return
-        loss /= len(dl.dataset)
-        acc /= len(dl.dataset)
-
-        return loss, acc
-
-
-    # def pred_1iter(self, dl, label=False):
-    #     self.network.eval()  # モデルを評価モードにする
-        
-    #     outputs = None
-    #     labels = None
-        
-    #     with torch.no_grad():
-    #         for input_b, label_b in dl:
-    #             input_b = input_b.to(self.device)
-    #             output_b = self.network(input_b)
-    #             output_b = output_b.detach().cpu().numpy()
-
-    #             if outputs is None: outputs = output_b
-    #             else: outputs = np.concatenate((outputs, output_b), axis=0)
-
-    #             if label:
-    #                 if labels is None: labels = label_b
-    #                 else: labels = np.concatenate((labels, label_b), axis=0)
-                    
-                    
     def log_met(self, log_dict):
         if self.hist is None: self.hist = pl.DataFrame(log_dict)
         else: self.hist = pl.concat([self.hist, pl.DataFrame(log_dict)], how="diagonal")
@@ -164,6 +56,79 @@ class Model:
         else: print(disp_str, end="\r")
 
 
+
+class Model(Trainer):
+    def __init__(self, network=None, loss_func=None, optimizer=None, scheduler=None, device=None):
+        super().__init__(device=device)
+        self.network = network.to(self.device)                                                        
+        self.loss_func = loss_func
+        self.optimizer = optimizer
+        self.scheduler = scheduler
+
+
+    def train_1epoch(self, dl, mixup=False, mixup_alpha=0.2, sched_iter=False):
+        self.network.train()  # モデルを訓練モードにする
+        loss = 0.0
+        acc = 0.0
+        
+        for input_b, label_b in dl:
+            input_b = input_b.to(self.device)
+            label_b = label_b.to(self.device)
+
+            if mixup:
+                lmd = np.random.beta(mixup_alpha, mixup_alpha)
+                perm = torch.randperm(input_b.shape[0]).to(self.device)
+                input2_b = input_b[perm, :]
+                label2_b = label_b[perm]
+                input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
+
+            output_b = self.network(input_b)
+
+            if mixup: loss_b = lmd * self.loss_func(output_b, label_b)  +  (1.0 - lmd) * self.loss_func(output_b, label2_b)
+            else: loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
+
+            loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+            _, pred = torch.max(output_b.detach(), dim=1)
+                
+            if mixup: acc += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).item()
+            else: acc += torch.sum(pred == label_b.data).item()
+
+            self.optimizer.zero_grad()              # optimizerを初期化 前バッチで計算した勾配の値を0に
+            loss_b.backward()                       # 誤差逆伝播 勾配計算 呼び出すたびに計算グラフを再構築
+            self.optimizer.step()                   # 重み更新
+            if self.scheduler is not None  and  sched_iter: self.scheduler.step()
+        if self.scheduler is not None  and  not sched_iter: self.scheduler.step()
+
+        loss /= len(dl.dataset)
+        acc /= len(dl.dataset)
+        
+        return loss, acc
+
+
+    def val_1epoch(self, dl):
+        if len(dl.dataset) == 0: return
+        loss = 0.0
+        acc = 0.0
+
+        self.network.eval()  # モデルを評価モードにする
+
+        with torch.no_grad():
+            for input_b, label_b in dl:
+                input_b = input_b.to(self.device)
+                label_b = label_b.to(self.device)
+
+                output_b = self.network(input_b)
+                loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
+                loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+                _, pred = torch.max(output_b.detach(), dim=1)
+                acc += torch.sum(pred == label_b.data).item()
+
+        loss /= len(dl.dataset)
+        acc /= len(dl.dataset)
+        return loss, acc
+
+
+
     def save_ckpt(self, fname=None, fname_head="model_"):
         if fname is None:
             date = datetime.datetime.now().strftime("%m%d_%H%M%S")
@@ -176,7 +141,6 @@ class Model:
         ckpt["optimizer_sd"] = self.optimizer.state_dict()
         try: ckpt["scheduler_sd"] = self.scheduler.state_dict()
         except: pass
-
         torch.save(ckpt, fname)
         
         
@@ -187,7 +151,6 @@ class Model:
         ckpt["optimizer_sd"] = self.optimizer.state_dict()
         try: ckpt["scheduler_sd"] = self.scheduler.state_dict()
         except: pass
-        
         return ckpt
 
 
@@ -200,31 +163,79 @@ class Model:
         except: pass
 
 
-    @classmethod
-    def load_ckpt_network(cls, network, path):
-        ckpt = torch.load(path)
-        network.load_state_dict(ckpt["network_sd"])
-        
-    
-    def hist_to_csv(self, fname=None, fname_head="hist_"):
-        if isinstance(self.hist, pl.DataFrame): df = self.hist
-        else: df = pl.DataFrame(self.hist)
 
-        if fname is None:
-            date = datetime.datetime.now().strftime("%m%d_%H%M%S")
-            if fname_head is None: fname = f"{date}.csv"
-            else: fname = f"{fname_head}{date}.csv"
-        df.write_csv(fname)
-        
-    
-    def result_to_csv(self, result, fname=None, fname_head="result_"):
-        df = pl.DataFrame(result["outputs"], columns=range(result["outputs"].shape[1]))
-        df["labels"] = result["labels"]
+class Ens(Trainer):
+    def __init__(self, models=None, device=None):
+        super().__init__(device=device)
+        self.models = models
 
-        if fname is None:
-            date = datetime.datetime.now().strftime("%m%d_%H%M%S")
-            if fname_head is None: fname = f"{date}.csv"
-            else: fname = f"{fname_head}{date}.csv"
-        df.write_csv(fname)
-        
 
+    def me_train_1epoch(self, dl, mixup=False, mixup_alpha=0.2, sched_iter=False):
+        loss = 0.0
+        acc = 0.0
+        
+        for input_b, label_b in dl:
+            input_b = input_b.to(self.device)
+            label_b = label_b.to(self.device)
+
+            if mixup:
+                lmd = np.random.beta(mixup_alpha, mixup_alpha)
+                perm = torch.randperm(input_b.shape[0]).to(self.device)
+                input2_b = input_b[perm, :]
+                label2_b = label_b[perm]
+                input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
+
+            for model in self.models: model.network.train()
+            output_b = [model.network(input_b) for model in self.models]
+            output_b = torch.sum(torch.stack(output_b), dim=0) / len(self.models)
+
+            if mixup: loss_b = lmd * model.loss_func(output_b, label_b)  +  (1.0 - lmd) * model.loss_func(output_b, label2_b)
+            else: loss_b = model.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
+
+            loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+            _, pred = torch.max(output_b.detach(), dim=1)
+
+            if mixup: acc += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).item()
+            else: acc += torch.sum(pred == label_b.data).item()
+
+            for model in self.models: model.optimizer.zero_grad()              
+            loss_b.backward()                                               
+            for model in self.models: model.optimizer.step()               
+
+            if model.scheduler is not None  and  sched_iter: [model.scheduler.step() for model in self.models]
+        if model.scheduler is not None  and  not sched_iter: [model.scheduler.step() for model in self.models]
+
+        loss /= len(dl.dataset)
+        acc /= len(dl.dataset)
+        
+        return loss, acc
+            
+
+    def me_val_1epoch(self, dl):
+        if len(dl.dataset) == 0: return
+        loss = 0.0
+        acc = 0.0
+        
+        for model in self.models: model.network.eval()  
+
+        with torch.no_grad():
+            for input_b, label_b in dl:
+                input_b = input_b.to(self.device)
+                label_b = label_b.to(self.device)
+
+                output_b = [model.network(input_b) for model in self.models]
+
+                output_b = torch.sum(torch.stack(output_b), dim=0) / len(self.models)
+                loss_b = model.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
+                loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+                _, pred = torch.max(output_b.detach(), dim=1)
+                acc += torch.sum(pred == label_b.data).item()
+
+        loss /= len(dl.dataset)
+        acc /= len(dl.dataset)
+        
+        return loss, acc
+            
+        
+        
+        
