@@ -13,7 +13,7 @@ class Trans:
             return transform
 
         self.tsr = [transforms.ToTensor()]
-        self.cf_norm = [transforms.Normalize(mean=[0.5070751309394836, 0.48654884099960327, 0.44091784954071045], std=[0.2673342823982239, 0.2564384639263153, 0.2761504650115967], inplace=True)]
+        self.cf_norm = [transforms.Normalize(mean=[0.5070751592371323, 0.48654887331495095, 0.4409178433670343], std=[0.2673342858792401, 0.2564384629170883, 0.27615047132568404], inplace=True)]
         self.in_norm = [transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], inplace=True)]
 
         self.color = [transforms.Lambda(convert_to_rgb())]
@@ -34,6 +34,7 @@ class Trans:
         # flipとか回転は、PILの状態で操作しなければいけないものもある。テンソルにする前に行う必要がある。
         self.cf_gen = self.compose(self.tsr + self.cf_norm)
         self.cf_crop = self.compose(self.crop32 + self.tsr + self.cf_norm)
+        self.cf_git = self.compose([transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip(), transforms.RandomRotation(15), transforms.ToTensor()] + self.cf_norm)
         # self.aug = self.compose(rotate_flip + tsr + norm)
         # self.laug = self.compose(light_aug + tsr + norm)
         # self.flip_aug = self.compose(rflip + tsr + norm)

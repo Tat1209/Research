@@ -4,3 +4,6 @@ mlruns/
 
 *.ckpt
 *.csv
+*.sqlite3
+
+git_cf100/

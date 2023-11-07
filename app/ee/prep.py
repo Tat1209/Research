@@ -53,7 +53,7 @@ class Prep:
 
 
     def fetch_loader(self, dataset, batch_size):
-        return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
+        return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
         
 
 

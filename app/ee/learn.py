@@ -1,90 +1,164 @@
 import torch
-import polars as pl
 import mlflow
-
-from time import time
 
 from prep import Prep
 from model import Model, Ens
 from trans import Trans
 
-from myresnet import resnet18 as net
+import utils
 
-working_dir = "/home/haselab/Documents/tat/"
+# from myresnet import resnet18 as net
+# from torchvision.models import resnet18 as net
+# model_arc = "official"
+from gitresnet import resnet18 as net
+model_arc = "gitresnet"
+
+work_path = '/home/haselab/Documents/tat/Research/'
 
 tr = Trans()
-pr = Prep(root=f"{working_dir}assets/datasets/", seed=0)
+pr = Prep(root=f"{work_path}assets/datasets/", seed=0)
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu') 
 
-mlflow.set_tracking_uri(f'{working_dir}mlruns')
-mlflow.set_experiment("GridSearch")
+mlflow.set_tracking_uri(f'{work_path}mlruns/')
+# mlflow.set_experiment("scheduler_lr_gridsearch_v2")
+mlflow.set_experiment("tmp")
 
-epochs = 200
-learning_rate = 0.001  
-batch_size = 400        
+for k in range(2):
+    for j in range(-20, 0, 2):
+        for i in range(6):
 
-fils = 64
-ensembles = 1
-data_range = 1.0
+            with mlflow.start_run(run_name=f"{i}") as run:
+                mlflow.log_metric("max_lr",     max_lr := 10**(j / 10))
+                mlflow.log_metric("epochs",     epochs := 200)
+                if k == 0: mlflow.log_metric("batch_size", batch_size := 125)
+                elif k == 1: mlflow.log_metric("batch_size", batch_size := 250)
+                mlflow.log_metric("fils",       fils := 64)
+                mlflow.log_metric("ensembles",  ensembles := 1)
+                mlflow.log_param("data_range",  data_range := 1.0)
+                mlflow.log_param("mixup",       mixup := False)
+                mlflow.log_param("trans",       repr(trans := tr.cf_git))
 
-iters = len(pr.dl("cifar_train", tr.cf_gen, batch_size, in_range=data_range))
-    
+                train_loader = pr.dl("cifar_train", trans, batch_size, in_range=data_range)
+                val_loader = pr.dl("cifar_val", tr.cf_gen, batch_size)
 
-for i in range(8):
-    models = []
-    for _ in range(ensembles):
-        network = net(nb_fils=fils, num_classes=100)
-        loss_func = torch.nn.CrossEntropyLoss()
-        optimizer = torch.optim.Adam(network.parameters(), lr=learning_rate)
-        # scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=learning_rate, epochs=epochs, steps_per_epoch=iters)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1)
+                mlflow.log_metric("iters_per_epoch", iters_per_epoch := len(pr.dl("cifar_train", tr.cf_gen, batch_size, in_range=data_range)))
+                mlflow.log_param("model_arc", model_arc)
 
-        model = Model(network, loss_func, optimizer=optimizer, scheduler=scheduler, device=device)
-        models.append(model)
-    ens = Ens(models)
 
-    match(i):
-        case 0: 
-            trans = tr.cf_crop
-            mixup = False
-        case 1: 
-            trans = tr.cf_raug(2)
-            mixup = False
-        case 2: 
-            trans = tr.cf_raug(3)
-            mixup = False
-        case 3: 
-            trans = tr.cf_raug(4)
-            mixup = False
-        case 4: 
-            trans = tr.cf_crop
-            mixup = True
-        case 5: 
-            trans = tr.cf_raug(2)
-            mixup = True
-        case 6: 
-            trans = tr.cf_raug(3)
-            mixup = True
-        case 7: 
-            trans = tr.cf_raug(4)
-            mixup = True
+                match i:
+                    case 0:
+                        mlflow.log_param("train_trans", repr(trans := tr.cf_git))
+                        mlflow.log_param("mixup",   mixup := False)
+                        models = []
+                        for _ in range(ensembles):
+                            network = net(num_classes=100)
+                            loss_func = torch.nn.CrossEntropyLoss()
+                            optimizer = torch.optim.SGD(network.parameters(), lr=max_lr, momentum=0.9, weight_decay=5e-4)
+                            scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=max_lr, epochs=epochs, steps_per_epoch=iters_per_epoch)
+                            sched_tuple = (scheduler, "batch")
 
-    with mlflow.start_run(run_name=f"{i}") as run:
+                            model = Model(network, loss_func, optimizer=optimizer, sched_tuple=sched_tuple, device=device)
+                            models.append(model)
+                        ens = Ens(models)
 
-        hp_dict = {"epochs":epochs, "learning_rate":learning_rate, "batch_size":batch_size, "fils":fils, "ensembles":ensembles, 
-                   "loss_func":repr(models[0].loss_func), "optimizer":repr(models[0].optimizer), "scheduler":repr(models[0].scheduler), 
-                   "trans":trans, "mixup":mixup}
-        mlflow.log_params(hp_dict)
+                    case 1: 
+                        mlflow.log_param("train_trans", repr(trans := tr.cf_git))
+                        mlflow.log_param("mixup",   mixup := False)
 
-        for e in range(epochs):
-            # Loss, Acc = ens.me_train_1epoch(pr.dl("cifar_train", tr.cf_raug(3), batch_size, in_range=data_range), mixup=False, sched_iter=False)
-            # Loss, Acc = ens.me_train_1epoch(pr.dl("cifar_train", tr.cf_crop, batch_size, in_range=data_range), mixup=False, sched_iter=False)
-            Loss, Acc = ens.me_train_1epoch(pr.dl("cifar_train", trans, batch_size, in_range=data_range), mixup=mixup, sched_iter=False)
-            vLoss, vAcc = ens.me_val_1epoch(pr.dl("cifar_val", tr.cf_gen, batch_size))
+                        models = []
+                        for _ in range(ensembles):
+                            network = net(num_classes=100)
+                            loss_func = torch.nn.CrossEntropyLoss()
+                            optimizer = torch.optim.SGD(network.parameters(), lr=max_lr, momentum=0.9, weight_decay=5e-4)
+                            # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1)
+                            # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=int(epochs/4), T_mult=1, eta_min=0, last_epoch=-1)
+                            scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[60, 120, 160], gamma=0.2)
+                            sched_tuple = (scheduler, "epoch")
 
-            met_dict = {"epoch":e+1, "Loss":Loss, "Acc":Acc, "vLoss":vLoss, "vAcc":vAcc}
-            mlflow.log_metrics(met_dict, step=e)
-            model.printlog(met_dict, e, epochs, itv=1) # itv = epochs
+                            model = Model(network, loss_func, optimizer=optimizer, sched_tuple=sched_tuple, device=device)
+                            models.append(model)
+                        ens = Ens(models)
 
-        
-        
+
+                    case 2: 
+                        models = []
+                        for _ in range(ensembles):
+                            network = net(num_classes=100)
+                            loss_func = torch.nn.CrossEntropyLoss()
+                            optimizer = torch.optim.SGD(network.parameters(), lr=max_lr, momentum=0.9, weight_decay=5e-4)
+                            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1)
+                            sched_tuple = (scheduler, "epoch")
+
+                            model = Model(network, loss_func, optimizer=optimizer, sched_tuple=sched_tuple, device=device)
+                            models.append(model)
+                        ens = Ens(models)
+
+                    case 3:
+                        mlflow.log_param("warmup_split",    warmup_split := 2)
+
+                        models = []
+                        for _ in range(ensembles):
+                            network = net(num_classes=100)
+                            loss_func = torch.nn.CrossEntropyLoss()
+                            optimizer = torch.optim.SGD(network.parameters(), lr=max_lr, momentum=0.9, weight_decay=5e-4)
+                            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=int(epochs/warmup_split), T_mult=1, eta_min=0, last_epoch=-1)
+                            sched_tuple = (scheduler, "epoch")
+
+                            model = Model(network, loss_func, optimizer=optimizer, sched_tuple=sched_tuple, device=device)
+                            models.append(model)
+                        ens = Ens(models)
+                        
+                        
+                        
+                    case 4:
+                        mlflow.log_param("warmup_split",    warmup_split := 4)
+
+                        models = []
+                        for _ in range(ensembles):
+                            network = net(num_classes=100)
+                            loss_func = torch.nn.CrossEntropyLoss()
+                            optimizer = torch.optim.SGD(network.parameters(), lr=max_lr, momentum=0.9, weight_decay=5e-4)
+                            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=int(epochs/warmup_split), T_mult=1, eta_min=0, last_epoch=-1)
+                            sched_tuple = (scheduler, "epoch")
+
+                            model = Model(network, loss_func, optimizer=optimizer, sched_tuple=sched_tuple, device=device)
+                            models.append(model)
+                        ens = Ens(models)
+                        
+                        
+                        
+                    case 5:
+                        mlflow.log_param("warmup_split",    warmup_split := "T_0=5, T_mult=3")
+
+                        models = []
+                        for _ in range(ensembles):
+                            network = net(num_classes=100)
+                            loss_func = torch.nn.CrossEntropyLoss()
+                            optimizer = torch.optim.SGD(network.parameters(), lr=max_lr, momentum=0.9, weight_decay=5e-4)
+                            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=3, eta_min=0, last_epoch=-1)
+                            sched_tuple = (scheduler, "epoch")
+
+                            model = Model(network, loss_func, optimizer=optimizer, sched_tuple=sched_tuple, device=device)
+                            models.append(model)
+                        ens = Ens(models)
+                        
+                    case _: break
+
+
+                hp_dict = {"loss_func":repr(ens.models[0].loss_func), "optimizer":repr(ens.models[0].optimizer), "scheduler":utils.sched_repr(ens.models[0].sched_tuple[0])}
+                mlflow.log_params(hp_dict)
+                mlflow.log_metric("params", ens.count_params())
+                mlflow.log_text(ens.models[0].arc_check(dl=train_loader), "model_structure.txt")
+
+                for e in range(epochs):
+                    mlflow.log_metric("lr", ens.models[0].get_lr(), step=e+1)
+
+                    Loss, Acc = ens.me_train_1epoch(train_loader, mixup=mixup)
+                    vLoss, vAcc = ens.me_val_1epoch(val_loader)
+
+                    met_dict = {"epoch":e+1, "Loss":Loss, "Acc":Acc, "vLoss":vLoss, "vAcc":vAcc}
+                    mlflow.log_metrics(met_dict, step=e+1)
+                    model.printlog(met_dict, e, epochs, itv=epochs/10)
+
+                    
+                    
