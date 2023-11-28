@@ -3,16 +3,16 @@ import polars as pl
 
 from time import time
 
-from prep import Prep
-from model import Model, Ens
+from datasets import Datasets
+from app.ee.trainer import Model, Ens
 from trans import Trans
 
-from myresnet import resnet18 as net
+from models.resnet_ee import resnet18 as net
 
 working_dir = "/home/haselab/Documents/tat/"
 
 tr = Trans()
-pr = Prep(root=f"{working_dir}assets/datasets/", seed=0)
+pr = Datasets(root=f"{working_dir}assets/datasets/", seed=0)
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu') 
 
 save_path = f"{working_dir}app/ee/results_e/"

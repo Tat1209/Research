@@ -1,4 +1,5 @@
 import sys
+import os
 import io
 from time import time
 
@@ -10,11 +11,9 @@ from torchinfo import summary
 
 
 class Trainer:
-    def __init__(self, device=None, mlflow_obj=None):
+    def __init__(self, device):
         if device is None: self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         else: self.device = device
-        self.mlflow_obj = mlflow_obj
-        
         self.hist = None
         self.start_time = None
 
@@ -38,10 +37,10 @@ class Trainer:
 
     
     def printlog(self, log_dict, e, epochs, itv=10):
-        if e == 0: self.start_time = time()
+        if e == 1: self.start_time = time()
         else:
             stop_time = time()
-            req_time = (stop_time - self.start_time) / e * epochs
+            req_time = (stop_time - self.start_time) / (e-1) * epochs
             left = self.start_time + req_time - stop_time
             eta = (datetime.datetime.now() + datetime.timedelta(seconds=left) + datetime.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
             t_hour, t_min = divmod(left//60, 60)
@@ -50,39 +49,51 @@ class Trainer:
         disp_str = ""
         for key, value in log_dict.items():
             try: 
-                if key == "epoch": disp_str += f'Epoch: {value:>4}/{value - e - 1 + epochs:>4}'
+                if key == "epoch": disp_str += f'Epoch: {value:>4}/{value - (e-1) - 1 + epochs:>4}'
                 else: disp_str += f"    {key}: {value:<9.7f}"
             except: pass
-        if e != 0: disp_str += f"    eta: {eta} (left: {left})"
+        if (e-1) != 0: disp_str += f"    eta: {eta} (left: {left})"
 
-        if e % itv >= itv-1 or (e+1) == epochs: print(disp_str)
+        if (e-1) % itv >= itv-1 or e == epochs: print(disp_str)
         else: print(disp_str, end="\r")
         
         
-    def mlflow_save(self):
-        
-        
+    def mlflow_save(self, mlflow_obj, artifact, path):
+        if os.path.exists(path): raise FileExistsError(f"Duplicate filenames '{path}' for temporary files. Please specify a different filename.")
+        with open(path, "wb") as f:
+            torch.save(artifact, f)
+            mlflow_obj.log_artifact(f.name)
+            os.remove(path)
+
+
+    # def mlflow_load(self, mlflow_obj, artifact_uri, file_name):
+    #     # example : "runs:/500cf58bee2b40a4a82861cc31a617b1/my_model.pkl"
+    #     if os.path.exists(file_name): raise FileExistsError(f"Duplicate filenames '{file_name}' for temporary files. Please specify a different filename.")
+    #     with open(file_name, "wb") as f:
+    #         mlflow_obj.log_artifact(f.name)
+    #         os.remove(file_name)
+
 
 
 class Model(Trainer):
-    def __init__(self, network=None, loss_func=None, optimizer=None, sched_tuple=None, device=None, mlflow_obj=None):
-        super().__init__(device=device, mlflow_obj=mlflow_obj)
+    def __init__(self, network=None, loss_func=None, optimizer=None, scheduler_t=None, device=None):
+        super().__init__(device=device)
         self.network = network.to(self.device)                                                        
         self.loss_func = loss_func
         self.optimizer = optimizer
-        if sched_tuple is not None:
-            assert isinstance(sched_tuple, tuple), "sched_tuple must be a tuple"
-            assert len(sched_tuple) == 2, "sched_tuple must have two elements"
-            assert isinstance(sched_tuple[0], torch.optim.lr_scheduler.LRScheduler), "sched_tuple[0] must be a torch.optim.lr_scheduler type"
-            assert isinstance(sched_tuple[1], str), "sched_tuple[1] must be a string"
-            assert sched_tuple[1] in ["epoch", "batch"], "sched_tuple[1] must be either 'epoch' or 'batch'"
-        self.sched_tuple = sched_tuple
+        if scheduler_t is not None:
+            assert isinstance(scheduler_t, tuple), "scheduler_t must be a tuple"
+            assert len(scheduler_t) == 2, "scheduler_t must have two elements"
+            assert isinstance(scheduler_t[0], torch.optim.lr_scheduler.LRScheduler), "scheduler_t[0] must be a torch.optim.lr_scheduler type"
+            assert isinstance(scheduler_t[1], str), "scheduler_t[1] must be a string"
+            assert scheduler_t[1] in ["epoch", "batch"], "scheduler_t[1] must be either 'epoch' or 'batch'"
+        self.scheduler_t = scheduler_t
 
         self.batch_iters = 0
         
 
     @torch.compile
-    def train_1epoch(self, dl, mixup=False, mixup_alpha=0.2, log_batch_lr=False):
+    def train_1epoch(self, dl, mixup=False, mixup_alpha=0.2, mlflow_obj=None, log_batch_lr=False):
         self.network.train()  # モデルを訓練モードにする
         loss = 0.0
         acc = 0.0
@@ -93,7 +104,7 @@ class Model(Trainer):
 
             if log_batch_lr:
                 self.batch_iters += 1
-                self.mlflow_obj.log_metric("lr_iter", self.get_lr(), step=self.batch_iters)
+                mlflow_obj.log_metric("lr_iter", self.get_lr(), step=self.batch_iters)
 
             if mixup:
                 lmd = np.random.beta(mixup_alpha, mixup_alpha)
@@ -117,8 +128,8 @@ class Model(Trainer):
             loss_b.backward()                       # 誤差逆伝播 勾配計算 呼び出すたびに計算グラフを再構築
             self.optimizer.step()                   # 重み更新
 
-            if self.sched_tuple is not None  and  self.sched_tuple[1] == "batch": self.sched_tuple[0].step()
-        if self.sched_tuple is not None  and  self.sched_tuple[1] == "epoch": self.sched_tuple[0].step()
+            if self.scheduler_t is not None  and  self.scheduler_t[1] == "batch": self.scheduler_t[0].step()
+        if self.scheduler_t is not None  and  self.scheduler_t[1] == "epoch": self.scheduler_t[0].step()
 
         loss /= len(dl.dataset)
         acc /= len(dl.dataset)
@@ -151,6 +162,7 @@ class Model(Trainer):
 
 
     def get_sd(self): return self.network.state_dict()
+    def load_sd(self, sd): self.network.load_state_dict(sd)
 
     def get_lr(self):
         return self.optimizer.param_groups[0]["lr"]
@@ -216,11 +228,12 @@ class Model(Trainer):
 
 
 class Ens(Trainer):
-    def __init__(self, models=None, device=None, mlflow_obj=None):
-        super().__init__(device=device, mlflow_obj=mlflow_obj)
+    def __init__(self, models=None, device=None):
+        super().__init__(device=device)
         self.models = models
 
 
+    # @torch.compile
     def me_train_1epoch(self, dl, mixup=False, mixup_alpha=0.2):
         loss = 0.0
         acc = 0.0
@@ -238,12 +251,13 @@ class Ens(Trainer):
 
             for model in self.models: model.network.train()
             output_b = [model.network(input_b) for model in self.models]
-            output_b = torch.sum(torch.stack(output_b), dim=0) / len(self.models)
+
+            output_b = torch.mean(torch.stack(output_b), dim=0)
 
             if mixup: loss_b = lmd * model.loss_func(output_b, label_b)  +  (1.0 - lmd) * model.loss_func(output_b, label2_b)
             else: loss_b = model.loss_func(output_b, label_b)
 
-            loss += loss_b.item()*len(input_b)
+            loss += loss_b.item() * len(input_b)
             _, pred = torch.max(output_b.detach(), dim=1)
 
             if mixup: acc += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).item()
@@ -251,13 +265,14 @@ class Ens(Trainer):
 
             for model in self.models: model.optimizer.zero_grad()              
             loss_b.backward()                                               
+            
             for model in self.models: model.optimizer.step()               
 
 
             for model in self.models:
-                if model.sched_tuple is not None  and  model.sched_tuple[1] == "batch": model.sched_tuple[0].step()
+                if model.scheduler_t is not None  and  model.scheduler_t[1] == "batch": model.scheduler_t[0].step()
         for model in self.models:
-                if model.sched_tuple is not None  and  model.sched_tuple[1] == "epoch": model.sched_tuple[0].step()
+                if model.scheduler_t is not None  and  model.scheduler_t[1] == "epoch": model.scheduler_t[0].step()
 
         loss /= len(dl.dataset)
         acc /= len(dl.dataset)
@@ -265,7 +280,55 @@ class Ens(Trainer):
         return loss, acc
             
 
-    def me_val_1epoch(self, dl):
+    # @torch.compile
+    def pe_train_1epoch(self, dl, mixup=False, mixup_alpha=0.2):
+        loss = 0.0
+        acc = 0.0
+        
+        for input_b, label_b in dl:
+            input_b = input_b.to(self.device)
+            label_b = label_b.to(self.device)
+
+            if mixup:
+                lmd = np.random.beta(mixup_alpha, mixup_alpha)
+                perm = torch.randperm(input_b.shape[0]).to(self.device)
+                input2_b = input_b[perm, :]
+                label2_b = label_b[perm]
+                input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
+
+            for model in self.models: model.network.train()
+            output_b = [model.network(input_b) for model in self.models]
+
+            if mixup: loss_b = [lmd * self.models[m].loss_func(output_b[m], label_b)  +  (1.0 - lmd) * self.models.loss_func(output_b[m], label2_b) for m in range(len(self.models))]
+            else: loss_b = [self.models[m].loss_func(output_b[m], label_b) for m in range(len(self.models))]
+
+
+            output_b = torch.mean(torch.stack(output_b), dim=0)
+
+            loss += sum([loss_b.item() for loss_b in loss_b]) * len(input_b)
+            _, pred = torch.max(output_b.detach(), dim=1)
+
+            if mixup: acc += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).item()
+            else: acc += torch.sum(pred == label_b.data).item()
+
+            for model in self.models: model.optimizer.zero_grad()              
+            for loss_b in loss_b: loss_b.backward()                                               
+            for model in self.models: model.optimizer.step()               
+
+
+            for model in self.models:
+                if model.scheduler_t is not None  and  model.scheduler_t[1] == "batch": model.scheduler_t[0].step()
+        for model in self.models:
+                if model.scheduler_t is not None  and  model.scheduler_t[1] == "epoch": model.scheduler_t[0].step()
+
+        loss /= len(dl.dataset) * len(self.models)
+        acc /= len(dl.dataset)
+        
+        return loss, acc
+            
+
+    # @torch.compile
+    def val_1epoch(self, dl):
         if len(dl.dataset) == 0: return
         loss = 0.0
         acc = 0.0
@@ -278,8 +341,8 @@ class Ens(Trainer):
                 label_b = label_b.to(self.device)
 
                 output_b = [model.network(input_b) for model in self.models]
-
-                output_b = torch.sum(torch.stack(output_b), dim=0) / len(self.models)
+                output_b = torch.mean(torch.stack(output_b), dim=0)
+                
                 loss_b = model.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
                 loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
                 _, pred = torch.max(output_b.detach(), dim=1)
@@ -289,12 +352,35 @@ class Ens(Trainer):
         acc /= len(dl.dataset)
         
         return loss, acc
-        
-        
-    def get_sd_list(self): return [model.get_sd() for model in self.models]
 
+
+    def get_sds(self): return [model.get_sd() for model in self.models]
+    def load_sds(self, sd_list): (self.models[i].load_sd(sd) for i, sd in enumerate(sd_list))
+        # for i, sd in enumerate(sd_list): self.models[i].load_sd(sd)
+    
     def count_params(self):
         return sum(model.count_params() for model in self.models)
 
     def count_trinable_params(self):
         return sum(model.count_trainable_params() for model in self.models)
+
+
+    def save_sds(self, path='state_dict_list.pkl'):
+        sd_list = self.get_sds()
+        torch.save(sd_list, path)
+
+
+    def load_sds_path(self, path):
+        sd_list = torch.load(path)
+        self.load_sds(sd_list)
+
+
+    def mlflow_save_sd(self, mlflow_obj, path='state_dict_list.pkl'):
+        sd_list = self.get_sds()
+        self.mlflow_save(mlflow_obj, sd_list, path)
+
+
+    # def mlflow_load_state_dict(self, mlflow_obj, path='state_dict_list.pkl'):
+    #     sd_list = self.get_sds()
+    #     self.mlflow_save(self, mlflow_obj, sd_list, path)
+

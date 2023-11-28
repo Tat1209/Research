@@ -2,13 +2,13 @@ import torch
 import mlflow
 import optuna
 
-from prep import Prep
-from model import Model, Ens
+from datasets import Prep
+from app.ee.trainer import Model, Ens
 from trans import Trans
 
 import utils
 
-from gitresnet import resnet18 as net
+from models.gitresnet import resnet18 as net
 model_arc = "gitresnet"
 
 work_path = '/home/haselab/Documents/tat/Research/'

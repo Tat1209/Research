@@ -51,16 +51,46 @@ class View(nn.Module):
         self.shape = shape
 
     def __repr__(self):
-        return f'View{self.shape}'
+        return f'{self.__class__.__name__}{self.shape}'
 
     def forward(self, input):
-        '''
-        Reshapes the input according to the shape saved in the view data structure.
-        '''
         batch_size = input.size(0)
         shape = (batch_size, *self.shape)
         out = input.view(shape)
         return out
+
+
+class CopyConcat(nn.Module):
+    def __init__(self, n, dim):
+        super().__init__()
+        # dimは、(C, H, W) に対する処理を想定
+        self.n = n
+        self.dim = dim
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}({self.n}, {self.dim})'
+
+    def forward(self, input):
+        out = torch.cat([input for _ in range(self.n)], dim=self.dim+1)
+        return out
+
+
+class SplitMean(nn.Module):
+    def __init__(self, chunks, dim):
+        super().__init__()
+        # dimは、(C, H, W) に対する処理を想定
+        self.chunks = chunks
+        self.dim = dim
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}({self.chunks}, {self.dim})'
+
+    # inputにはバッチ(B, C, H, W)が入る。画像のテンソルはdim=1からはじまるからdimに1たしてる
+    def forward(self, input):
+        x = input.view(input.shape[0], self.chunks, -1)
+        # x = torch.mean(x, dim=self.dim+1)
+        x = torch.mean(x, dim=1)
+        return x
 
 
 def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
@@ -110,10 +140,10 @@ class BasicBlock(nn.Module):
             raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv3x3(inplanes, planes, stride, groups=groups)
-        self.bn1 = norm_layer(planes)
+        self.bn1 = norm_layer(planes, affine=False)
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = conv3x3(planes, planes, groups=groups)
-        self.bn2 = norm_layer(planes)
+        self.bn2 = norm_layer(planes, affine=False)
         self.downsample = downsample
         self.stride = stride
 
@@ -164,11 +194,11 @@ class Bottleneck(nn.Module):
         planes *= groups
         # Both self.conv2 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv1x1(inplanes, width, groups=groups)
-        self.bn1 = norm_layer(width)
+        self.bn1 = norm_layer(width, affine=False)
         self.conv2 = conv3x3(width, width, stride, groups, dilation)
-        self.bn2 = norm_layer(width)
+        self.bn2 = norm_layer(width, affine=False)
         self.conv3 = conv1x1(width, planes * self.expansion, groups=groups)
-        self.bn3 = norm_layer(planes * self.expansion)
+        self.bn3 = norm_layer(planes * self.expansion, affine=False)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
         self.stride = stride
@@ -231,30 +261,49 @@ class ResNet(nn.Module):
                     )
         self.groups = ee_groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(3 * self.groups, self.inplanes * self.groups, kernel_size=7, stride=2, padding=3, bias=False, groups=self.groups)
-        self.bn1 = norm_layer(self.inplanes * self.groups)
+
+        # -------------------------------------------------------------------------------------------------------------------------------------------
+        # self.conv1 = nn.Conv2d(3 * self.groups, self.inplanes * self.groups, kernel_size=7, stride=2, padding=3, bias=False, groups=self.groups)
+        # self.bn1 = norm_layer(self.inplanes * self.groups)
+        # self.relu = nn.ReLU(inplace=True)
+        # self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        # self.layer1 = self._make_layer(block, nb_fils, layers[0])
+        # self.layer2 = self._make_layer(block, nb_fils * 2, layers[1], stride=2, dilate=replace_stride_with_dilation[0])
+        # self.layer3 = self._make_layer(block, nb_fils * 4, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
+        # self.layer4 = self._make_layer(block, nb_fils * 8, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
+
+        self.conv1 = nn.Sequential(
+                CopyConcat(ee_groups, dim=0),
+                nn.Conv2d(3 * self.groups, self.inplanes * self.groups, kernel_size=3, padding=1, bias=False, groups=self.groups),
+        )
+        self.bn1 = norm_layer(self.inplanes * self.groups, affine=False)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, nb_fils, layers[0])
+        self.layer1 = self._make_layer(block, nb_fils, layers[0], stride=1)
         self.layer2 = self._make_layer(block, nb_fils * 2, layers[1], stride=2, dilate=replace_stride_with_dilation[0])
         self.layer3 = self._make_layer(block, nb_fils * 4, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
         self.layer4 = self._make_layer(block, nb_fils * 8, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
+
+
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         fc_in = nb_fils * 8 * block.expansion
         fc_out = num_classes
         # self.fc = nn.Linear(fc_in, fc_out)
         self.fc = nn.Sequential(
+                # View は、tensor.view を nn.moduleとして使うためのクラス
                 View((-1, 1)),
                 nn.Conv1d(fc_in * self.groups, fc_out * self.groups, kernel_size=1, bias=True, groups=self.groups),
-                View((-1,))
+                View((-1,)),
+                SplitMean(ee_groups, dim=0)
                 )
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
             elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+                if m.weight is not None:
+                    nn.init.constant_(m.weight, 1)
+                    nn.init.constant_(m.bias, 0)
 
         # Zero-initialize the last BN in each residual branch,
         # so that the residual branch starts with zeros, and each residual block behaves like an identity.
@@ -283,7 +332,7 @@ class ResNet(nn.Module):
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
                     conv1x1(self.inplanes * self.groups, planes * block.expansion * self.groups, stride, groups=self.groups),
-                    norm_layer(planes * block.expansion * self.groups)
+                    norm_layer(planes * block.expansion * self.groups, affine=False)
                     )
 
         layers = []
@@ -313,7 +362,9 @@ class ResNet(nn.Module):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        x = self.maxpool(x)
+        
+        #--------------------------------------------------------------------------------------------------------------------------------------------
+        # x = self.maxpool(x)
 
         x = self.layer1(x)
         x = self.layer2(x)

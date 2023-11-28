@@ -1,8 +1,8 @@
 import torch
 import mlflow
 
-from prep import Prep
-from model import Model
+from datasets import Prep
+from app.ee.trainer import Model
 from trans import Trans
 
 from models.gitresnet import resnet18 as net
