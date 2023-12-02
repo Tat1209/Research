@@ -20,13 +20,16 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 mlflow.set_tracking_uri(f'{work_path}mlruns/')
 # mlflow.set_experiment("hase_reap")
 mlflow.set_experiment("datas_fils")
+# mlflow.set_experiment("tmp")
 
 
-for ti in range(2):
+for ti in range(4):
     for fi in [2 ** i for i in range(6, -1, -1)]:
         for di in [0.002, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0]:
+            if ti == 0  or  ti == 1 and (fi >= 4): continue
             with mlflow.start_run(run_name=f"{fi}") as run:
-                mlflow.log_metric("max_lr",     max_lr := 0.001)
+                if ti == 0  or  ti == 1: mlflow.log_metric("max_lr",     max_lr := 0.001)   # RAdam
+                elif ti == 2  or  ti == 3: mlflow.log_metric("max_lr",     max_lr := 0.005)   # Adam
                 mlflow.log_metric("epochs",     epochs := 100)
                 mlflow.log_metric("batch_size", batch_size := 125)
                 mlflow.log_metric("fils",       fils := fi)
@@ -34,8 +37,8 @@ for ti in range(2):
 
                 mlflow.log_param("ensemble_type",   ensemble_type := ['easy', 'merge', 'pure'][0])
                 mlflow.log_param("mixup",       mixup := False)
-                if ti == 0: mlflow.log_param("train_trans", repr(train_trans := Trans.cf_gen))
-                elif ti == 1: mlflow.log_param("train_trans", repr(train_trans := Trans.cf_git))
+                if ti == 0  or  ti == 2: mlflow.log_param("train_trans", repr(train_trans := Trans.cf_gen))
+                elif ti == 1  or  ti == 3: mlflow.log_param("train_trans", repr(train_trans := Trans.cf_git))
                 mlflow.log_param("val_trans",   repr(val_trans := Trans.cf_gen))
 
                 train_loader = dl(ds("cifar10_train", train_trans, in_range=di), batch_size, shuffle=True)
@@ -48,7 +51,8 @@ for ti in range(2):
 
                 network = net(num_classes=100, nb_fils=fils, ee_groups=ensembles)
                 loss_func = torch.nn.CrossEntropyLoss()
-                optimizer = torch.optim.RAdam(network.parameters(), lr=max_lr)
+                if ti == 0  or  ti == 1: optimizer = torch.optim.RAdam(network.parameters(), lr=max_lr)
+                elif ti == 2  or  ti == 3: optimizer = torch.optim.Adam(network.parameters(), lr=max_lr)
                 scheduler_t = (torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1), "epoch")
 
                 model = EEModel(network, loss_func, optimizer=optimizer, scheduler_t=scheduler_t, device=device)
