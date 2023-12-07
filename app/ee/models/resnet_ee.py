@@ -259,10 +259,11 @@ class ResNet(nn.Module):
                     "replace_stride_with_dilation should be None "
                     f"or a 3-element tuple, got {replace_stride_with_dilation}"
                     )
-        self.groups = ee_groups
+        self.ee_groups = ee_groups
+        self.groups = self.ee_groups
         self.base_width = width_per_group
         self.conv1 = nn.Sequential(
-                CopyConcat(ee_groups, dim=0),
+                CopyConcat(self.ee_groups, dim=0),
                 nn.Conv2d(3 * self.groups, self.inplanes * self.groups, kernel_size=7, stride=2, padding=3, bias=False, groups=self.groups)
         )
         self.bn1 = norm_layer(self.inplanes * self.groups)
@@ -280,7 +281,7 @@ class ResNet(nn.Module):
                 View((-1, 1)),
                 nn.Conv1d(fc_in * self.groups, fc_out * self.groups, kernel_size=1, bias=True, groups=self.groups),
                 View((-1,)),
-                SplitMean(ee_groups, dim=0)
+                SplitMean(self.ee_groups, dim=0)
                 )
 
         for m in self.modules():

@@ -1,13 +1,15 @@
 import sys
 import os
 import io
+import datetime
 from time import time
 
 import torch
 import numpy as np
-import datetime
 import polars as pl
 from torchinfo import summary
+
+from hook import HookManager
 
 
 class Trainer:
@@ -92,7 +94,6 @@ class Model(Trainer):
         self.batch_iters = 0
         
 
-    @torch.compile
     def train_1epoch(self, dl, mixup=False, mixup_alpha=0.2, mlflow_obj=None, log_batch_lr=False):
         self.network.train()  # モデルを訓練モードにする
         loss = 0.0
@@ -137,7 +138,6 @@ class Model(Trainer):
         return loss, acc
 
 
-    @torch.compile
     def val_1epoch(self, dl):
         if len(dl.dataset) == 0: return
         loss = 0.0
@@ -179,12 +179,12 @@ class Model(Trainer):
             input_b, _ = next(iter(dl))
             input_size = input_b.shape
         try:
-            temp_out = io.StringIO()
-            sys.stdout = temp_out
+            tmp_out = io.StringIO()
+            sys.stdout = tmp_out
             summary(model=self.network, input_size=input_size, verbose=verbose, col_names=col_names, row_settings=row_settings)
         finally:
             sys.stdout = sys.__stdout__
-        summary_str = temp_out.getvalue()
+        summary_str = tmp_out.getvalue()
 
         if out_file:
             with open(file_name, 'w') as f: f.write(summary_str)
@@ -224,7 +224,62 @@ class Model(Trainer):
         self.optimizer.load_state_dict(ckpt["optimizer_sd"])
         try: self.scheduler.state_dict(ckpt["scheduler_sd"])
         except: pass
+        
 
+
+class EEModel(Model):
+    def __init__(self, network=None, loss_func=None, optimizer=None, scheduler_t=None, device=None):
+        super().__init__(network=network, loss_func=loss_func, optimizer=optimizer, scheduler_t=scheduler_t, device=device)
+        
+        
+    def val_1epoch(self, dl, log_layer=None):
+        if len(dl.dataset) == 0: return
+        loss = 0.0
+        acc = 0.0
+
+        if log_layer is not None:
+            loss_l = 0.0
+            acc_l = 0.0
+            hm = HookManager(log_layer)
+            hm.register()
+
+        self.network.eval()  # モデルを評価モードにする
+
+        with torch.no_grad():
+            for input_b, label_b in dl:
+                input_b = input_b.to(self.device)
+                label_b = label_b.to(self.device)
+
+                output_b = self.network(input_b)
+                loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
+                loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+                _, pred = torch.max(output_b.detach(), dim=1)
+                acc += torch.sum(pred == label_b.data).item()
+
+                if log_layer is not None:
+                    output_l = hm.output.view(output_l.shape[0], self.network.ee_groups, -1)
+                    
+                    output_l = output_l[:, [0, 1, 2, 3]]
+                    # output_l = output_l[:, 0:self.network.ee_groups]
+                    output_l = output_l.mean(dim=1)
+
+                    loss_bl = self.loss_func(output_l, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
+                    loss_l += loss_bl.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+                    _, pred = torch.max(output_l.detach(), dim=1)
+                    acc_l += torch.sum(pred == label_b.data).item()
+
+        if log_layer is not None:
+            hm.remove()
+            loss_l /= len(dl.dataset)
+            acc_l /= len(dl.dataset)
+
+
+        loss /= len(dl.dataset)
+        acc /= len(dl.dataset)
+        
+
+        if log_layer is not None: return loss, acc, loss_l, acc_l
+        else: return loss, acc
 
 
 class Ens(Trainer):
@@ -233,101 +288,6 @@ class Ens(Trainer):
         self.models = models
 
 
-    # @torch.compile
-    def me_train_1epoch(self, dl, mixup=False, mixup_alpha=0.2):
-        loss = 0.0
-        acc = 0.0
-        
-        for input_b, label_b in dl:
-            input_b = input_b.to(self.device)
-            label_b = label_b.to(self.device)
-
-            if mixup:
-                lmd = np.random.beta(mixup_alpha, mixup_alpha)
-                perm = torch.randperm(input_b.shape[0]).to(self.device)
-                input2_b = input_b[perm, :]
-                label2_b = label_b[perm]
-                input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
-
-            for model in self.models: model.network.train()
-            output_b = [model.network(input_b) for model in self.models]
-
-            output_b = torch.mean(torch.stack(output_b), dim=0)
-
-            if mixup: loss_b = lmd * model.loss_func(output_b, label_b)  +  (1.0 - lmd) * model.loss_func(output_b, label2_b)
-            else: loss_b = model.loss_func(output_b, label_b)
-
-            loss += loss_b.item() * len(input_b)
-            _, pred = torch.max(output_b.detach(), dim=1)
-
-            if mixup: acc += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).item()
-            else: acc += torch.sum(pred == label_b.data).item()
-
-            for model in self.models: model.optimizer.zero_grad()              
-            loss_b.backward()                                               
-            
-            for model in self.models: model.optimizer.step()               
-
-
-            for model in self.models:
-                if model.scheduler_t is not None  and  model.scheduler_t[1] == "batch": model.scheduler_t[0].step()
-        for model in self.models:
-                if model.scheduler_t is not None  and  model.scheduler_t[1] == "epoch": model.scheduler_t[0].step()
-
-        loss /= len(dl.dataset)
-        acc /= len(dl.dataset)
-        
-        return loss, acc
-            
-
-    # @torch.compile
-    def pe_train_1epoch(self, dl, mixup=False, mixup_alpha=0.2):
-        loss = 0.0
-        acc = 0.0
-        
-        for input_b, label_b in dl:
-            input_b = input_b.to(self.device)
-            label_b = label_b.to(self.device)
-
-            if mixup:
-                lmd = np.random.beta(mixup_alpha, mixup_alpha)
-                perm = torch.randperm(input_b.shape[0]).to(self.device)
-                input2_b = input_b[perm, :]
-                label2_b = label_b[perm]
-                input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
-
-            for model in self.models: model.network.train()
-            output_b = [model.network(input_b) for model in self.models]
-
-            if mixup: loss_b = [lmd * self.models[m].loss_func(output_b[m], label_b)  +  (1.0 - lmd) * self.models.loss_func(output_b[m], label2_b) for m in range(len(self.models))]
-            else: loss_b = [self.models[m].loss_func(output_b[m], label_b) for m in range(len(self.models))]
-
-
-            output_b = torch.mean(torch.stack(output_b), dim=0)
-
-            loss += sum([loss_b.item() for loss_b in loss_b]) * len(input_b)
-            _, pred = torch.max(output_b.detach(), dim=1)
-
-            if mixup: acc += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).item()
-            else: acc += torch.sum(pred == label_b.data).item()
-
-            for model in self.models: model.optimizer.zero_grad()              
-            for loss_b in loss_b: loss_b.backward()                                               
-            for model in self.models: model.optimizer.step()               
-
-
-            for model in self.models:
-                if model.scheduler_t is not None  and  model.scheduler_t[1] == "batch": model.scheduler_t[0].step()
-        for model in self.models:
-                if model.scheduler_t is not None  and  model.scheduler_t[1] == "epoch": model.scheduler_t[0].step()
-
-        loss /= len(dl.dataset) * len(self.models)
-        acc /= len(dl.dataset)
-        
-        return loss, acc
-            
-
-    # @torch.compile
     def val_1epoch(self, dl):
         if len(dl.dataset) == 0: return
         loss = 0.0
@@ -383,4 +343,110 @@ class Ens(Trainer):
     # def mlflow_load_state_dict(self, mlflow_obj, path='state_dict_list.pkl'):
     #     sd_list = self.get_sds()
     #     self.mlflow_save(self, mlflow_obj, sd_list, path)
+
+
+
+class PureEns(Ens):
+    def __init__(self, models=None, device=None):
+        super().__init__(models=models, device=device)
+
+
+    def train_1epoch(self, dl, mixup=False, mixup_alpha=0.2):
+        loss = 0.0
+        acc = 0.0
+        
+        for input_b, label_b in dl:
+            input_b = input_b.to(self.device)
+            label_b = label_b.to(self.device)
+
+            if mixup:
+                lmd = np.random.beta(mixup_alpha, mixup_alpha)
+                perm = torch.randperm(input_b.shape[0]).to(self.device)
+                input2_b = input_b[perm, :]
+                label2_b = label_b[perm]
+                input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
+
+            for model in self.models: model.network.train()
+            output_b = [model.network(input_b) for model in self.models]
+
+            if mixup: loss_b = [lmd * self.models[m].loss_func(output_b[m], label_b)  +  (1.0 - lmd) * self.models.loss_func(output_b[m], label2_b) for m in range(len(self.models))]
+            else: loss_b = [self.models[m].loss_func(output_b[m], label_b) for m in range(len(self.models))]
+
+
+            output_b = torch.mean(torch.stack(output_b), dim=0)
+
+            loss += sum([loss_b.item() for loss_b in loss_b]) * len(input_b)
+            _, pred = torch.max(output_b.detach(), dim=1)
+
+            if mixup: acc += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).item()
+            else: acc += torch.sum(pred == label_b.data).item()
+
+            for model in self.models: model.optimizer.zero_grad()              
+            for loss_b in loss_b: loss_b.backward()                                               
+            for model in self.models: model.optimizer.step()               
+
+
+            for model in self.models:
+                if model.scheduler_t is not None  and  model.scheduler_t[1] == "batch": model.scheduler_t[0].step()
+        for model in self.models:
+            if model.scheduler_t is not None  and  model.scheduler_t[1] == "epoch": model.scheduler_t[0].step()
+
+        loss /= len(dl.dataset) * len(self.models)
+        acc /= len(dl.dataset)
+        
+        return loss, acc
+
+
+
+class MergeEns(Ens):
+    def __init__(self, models=None, device=None):
+        super().__init__(models=models, device=device)
+
+
+    def train_1epoch(self, dl, mixup=False, mixup_alpha=0.2):
+        loss = 0.0
+        acc = 0.0
+        
+        for input_b, label_b in dl:
+            input_b = input_b.to(self.device)
+            label_b = label_b.to(self.device)
+
+            if mixup:
+                lmd = np.random.beta(mixup_alpha, mixup_alpha)
+                perm = torch.randperm(input_b.shape[0]).to(self.device)
+                input2_b = input_b[perm, :]
+                label2_b = label_b[perm]
+                input_b = lmd * input_b  +  (1.0 - lmd) * input2_b
+
+            for model in self.models: model.network.train()
+            output_b = [model.network(input_b) for model in self.models]
+
+            output_b = torch.mean(torch.stack(output_b), dim=0)
+
+            if mixup: loss_b = lmd * model.loss_func(output_b, label_b)  +  (1.0 - lmd) * model.loss_func(output_b, label2_b)
+            else: loss_b = model.loss_func(output_b, label_b)
+
+            loss += loss_b.item() * len(input_b)
+            _, pred = torch.max(output_b.detach(), dim=1)
+
+            if mixup: acc += (lmd * torch.sum(pred == label_b) + (1.0 - lmd) * torch.sum(pred == label2_b)).item()
+            else: acc += torch.sum(pred == label_b.data).item()
+
+            for model in self.models: model.optimizer.zero_grad()              
+            loss_b.backward()                                               
+            
+            for model in self.models: model.optimizer.step()               
+
+
+            for model in self.models:
+                if model.scheduler_t is not None  and  model.scheduler_t[1] == "batch": model.scheduler_t[0].step()
+        for model in self.models:
+            if model.scheduler_t is not None  and  model.scheduler_t[1] == "epoch": model.scheduler_t[0].step()
+
+        loss /= len(dl.dataset)
+        acc /= len(dl.dataset)
+        
+        return loss, acc
+            
+
 
