@@ -1,6 +1,7 @@
 __pycache__/
 assets/datasets/
 mlruns/
+sakana/
 
 *.ckpt
 *.csv
