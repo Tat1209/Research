@@ -9,8 +9,6 @@ import numpy as np
 import polars as pl
 from torchinfo import summary
 
-from hook import HookManager
-
 
 class Trainer:
     def __init__(self, device):
@@ -224,6 +222,16 @@ class Model(Trainer):
         self.optimizer.load_state_dict(ckpt["optimizer_sd"])
         try: self.scheduler.state_dict(ckpt["scheduler_sd"])
         except: pass
+
+
+    def mlflow_save_sd(self, mlflow_obj, path='state_dict.pkl'):
+        sd = self.get_sd()
+        self.mlflow_save(mlflow_obj, sd, path)
+
+
+    # def mlflow_load_sd(self, mlflow_obj, path='state_dict.pkl'):
+    #     sd = self.get_sd()
+    #     self.mlflow_save(mlflow_obj, sd, path)
         
 
 
@@ -332,7 +340,7 @@ class Ens(Trainer):
         self.mlflow_save(mlflow_obj, sd_list, path)
 
 
-    # def mlflow_load_state_dict(self, mlflow_obj, path='state_dict_list.pkl'):
+    # def mlflow_load_sd(self, mlflow_obj, path='state_dict_list.pkl'):
     #     sd_list = self.get_sds()
     #     self.mlflow_save(self, mlflow_obj, sd_list, path)
 

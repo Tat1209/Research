@@ -3,7 +3,6 @@ import torchvision
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.functional import rotate
-from torchvision.transforms import RandAugment
 
 
 
@@ -21,12 +20,10 @@ class Trans:
     hflip = transforms.RandomHorizontalFlip(p=1)
     vflip = transforms.RandomVerticalFlip(p=1)
 
-    def cf_raug(num_ops=2, magnitude=9, num_magnitude_bins=31, interpolation=InterpolationMode.BILINEAR):
-        RandAugment(num_ops=num_ops, magnitude=magnitude, num_magnitude_bins=num_magnitude_bins, interpolation=interpolation)
-
-    # torch.tileだと、次元数をかえたときにタプルの記述を変えなければいけないため(1d => (n, 1), 2d => (n, 1, 1)、その必要が無いようにcatで実装
-    def repeat_data(n): return transforms.Lambda(lambda tensor: torch.cat([tensor for _ in range(n)], dim=0))
+    def cf_raug(**kwargs): torchvision.transforms.RandAugment(**kwargs)
+    def repeat_data(n): return transforms.Lambda(lambda tensor: torch.cat([tensor for _ in range(n)], dim=0))   # torch.tileだと、次元数をかえたときにタプルの記述を変えなければいけないため(1d => (n, 1), 2d => (n, 1, 1)、その必要が無いようにcatで実装
     def rotate(th): return transforms.Lambda(lambda image: rotate(image, th))
+    def resize(h, w): return torchvision.transforms.Resize((h, w), antialias=True)  # antialias を True にしないと、warning がでる
 
     # flipや回転など、PILの状態で操作しなければいけないものもあり、それらはテンソルにする前に行う必要がある。
     rflip = [transforms.RandomHorizontalFlip(p=0.5), transforms.RandomVerticalFlip(p=0.5)]
