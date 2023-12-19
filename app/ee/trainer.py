@@ -137,7 +137,7 @@ class Model(Trainer):
 
 
     def val_1epoch(self, dl):
-        if len(dl.dataset) == 0: return
+        if len(dl) == 0: return None, None
         loss = 0.0
         acc = 0.0
 
@@ -157,6 +157,28 @@ class Model(Trainer):
         loss /= len(dl.dataset)
         acc /= len(dl.dataset)
         return loss, acc
+
+
+    def pred_1iter(self, dl, categorize=True, label=False):
+        outputs = None
+        labels = None
+        with torch.no_grad():
+            for input_b, label_b in dl:
+                input_b = input_b.to(self.device)
+                output_b = self.network(input_b)
+                output_b = output_b.detach()
+                if categorize:
+                    _, pred = torch.max(output_b, dim=1)
+                    output_b = pred
+
+                if outputs is None: outputs = output_b
+                else: outputs = torch.cat((outputs, output_b), dim=0)
+
+                if label:
+                    if labels is None: labels = label_b
+                    else: labels = labels.extend(label_b)
+
+        return outputs, labels
 
 
     def get_sd(self): return self.network.state_dict()

@@ -71,47 +71,30 @@ class Datasets:
             case _: raise Exception("Invalid name.")
 
 
-    def __call__(self, ds_str, transform_l=[Trans.tsr], seed=None, label_balance=False, in_range=1.0, ex_range=None):
+    def __call__(self, ds_str, seed=None, label_balance=False, transform_l=None):
         # seed はデータセットの順番 "arange" は並び替えなし
-        transform = torchvision.transforms.Compose(transform_l)
-        ds = self._fetch_base_ds(ds_str, transform)
+        ds = self._fetch_base_ds(ds_str, None)
         ds.ds_str = ds_str
 
-        if label_balance: data_num, indices = self._indices_perm_lb(ds, seed)
-        else: data_num, indices = self._indices_perm(ds, seed)
+        if label_balance: indices = self._indices_perm_lb(ds, seed)
+        else: indices = self._indices_perm(ds, seed)
         
-        if ex_range is None:
-            if not isinstance(in_range, tuple): in_range = (0, in_range)
-            idx_range = (int(in_range[0] * data_num), int(in_range[1] * data_num))
-            indices = indices[idx_range[0]:idx_range[1]]
-
-        else:
-            if not isinstance(ex_range, tuple): ex_range = (0, ex_range)
-            idx_range = (int(ex_range[0] * data_num), int(ex_range[1] * data_num))
-            indices = indices[:idx_range[0]]+indices[idx_range[1]:]
-
-        sds = Subset(ds, indices=indices)
-        sds.ds_name = ds.__class__.__name__
-        sds.ds_str = ds_str
-        
-        return sds
+        return DSInfo(self, ds_str, indices, transform_l)
 
 
     def _indices_perm(self, ds, seed):
         data_num = len(ds)
-        
         if seed == "arange": indices = torch.arange(data_num)
         else:
             if seed is not None: torch.manual_seed(seed)
             indices = torch.randperm(data_num)
-        
+            
         indices = indices.tolist()
         
-        return data_num, indices
+        return indices
 
 
     def _indices_perm_lb(self, ds, seed):
-        data_num = len(ds)
         if seed is not None  and  seed != "arange": torch.manual_seed(seed)
 
         try: label_d, len_d = torch.load(f"{self.root}{ds.ds_str}.ld")
@@ -119,7 +102,6 @@ class Datasets:
             self.ds_to_labeldict(ds)
 
             label_d, len_d = torch.load(f"{self.root}{ds.ds_str}.ld")
-
 
         keys = list(len_d.keys())
         values = list(len_d.values())
@@ -163,13 +145,12 @@ class Datasets:
             value = shuffled_label_d[key][0] # label_d[key]のリストから先頭の要素を取り出す
             indices.append(value)
             shuffled_label_d[key] = shuffled_label_d[key][1:] # label_d[key]のリストから先頭の要素を削除する
-            
-        return data_num, indices
+
+        return indices
 
 
     def ds_to_labeldict(self, ds, batch_size=100):
-        # tmp_ds = self(ds.ds_str, transform_l=[Trans.color, Trans.tsr, Trans.resize(1, 1)], seed="arange")
-        tmp_ds = self(ds.ds_str, transform_l=[Trans.color, Trans.tsr, Trans.resize(1, 1)], seed="arange")
+        tmp_ds = self(ds.ds_str, transform_l=[Trans.tsr, Trans.pil, Trans.color, Trans.tsr, Trans.resize(1, 1)], seed="arange")
         dl = DataLoader(tmp_ds, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=False)
 
         labels = None   # label のリストを作成
@@ -197,10 +178,77 @@ class Datasets:
         print(f"Saved it to the following path: {save_path}")
             
         return save_obj
+    
+    
+class DSInfo:
+    def __init__(self, ds_obj, ds_str, indices, transform_l):
+        self.ds_obj = ds_obj
+        self.ds_str = ds_str
+        self.indices = indices
+        self.transform_l_iv = transform_l
+
+        
+    def __call__(self, **kwargs):
+
+        dsinfo = self
+        for key, value in kwargs.items(): dsinfo = getattr(dsinfo, key)(value)
+        
+        return dsinfo
+
+
+    def in_range(self, range_t):
+        data_num = len(self)
+        if not isinstance(range_t, tuple): range_t = (0, range_t)
+        idx_range = (int(range_t[0] * data_num), int(range_t[1] * data_num))
+        indices = self.indices[idx_range[0]:idx_range[1]]
+        
+        dsinfo = DSInfo(self.ds_obj, self.ds_str, indices, self.transform_l_iv)
+        return dsinfo
+        
+
+    def ex_range(self, range_t):
+        data_num = len(self)
+        if not isinstance(range_t, tuple): range_t = (0, range_t)
+        idx_range = (int(range_t[0] * data_num), int(range_t[1] * data_num))
+        indices = self.indices[:idx_range[0]] + self.indices[idx_range[1]:]
+
+        dsinfo = DSInfo(self.ds_obj, self.ds_str, indices, self.transform_l_iv)
+        return dsinfo
+    
+    
+    def transform_l(self, transform_l):
+        dsinfo = DSInfo(self.ds_obj, self.ds_str, self.indices, transform_l)
+        
+        return dsinfo
+    
+    
+    def create_ds(self):
+        transform = torchvision.transforms.Compose(self.transform_l_iv)
+        ds = self.ds_obj._fetch_base_ds(self.ds_str, transform)
+        ds.ds_str = self.ds_str
+        ds.ds_name = ds.__class__.__name__
+
+        sds = Subset(ds, indices=self.indices)
+        sds.ds_str = ds.ds_str
+        sds.ds_name = ds.ds_name
+        
+        return sds
+    
+    
+    def __len__(self):
+        return len(self.indices)
+
 
 
 def dl(ds, batch_size, shuffle=True):
-    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=2, pin_memory=True)
+    ds = ds.create_ds()
+    try: dl = DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=2, pin_memory=True)
+    except ValueError: dl = None
+
+    return dl
+
+
+        
 
 
 

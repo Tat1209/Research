@@ -3,7 +3,10 @@ assets/datasets/
 mlruns/
 sakana/
 
-*.ckpt
 *.csv
+*.zip
+*.pkl
+
+*.ckpt
 *.sqlite3
 

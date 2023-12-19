@@ -9,8 +9,6 @@ import numpy as np
 import polars as pl
 from torchinfo import summary
 
-from hook import HookManager
-
 
 class Trainer:
     def __init__(self, device):
@@ -139,7 +137,7 @@ class Model(Trainer):
 
 
     def val_1epoch(self, dl):
-        if len(dl.dataset) == 0: return
+        if len(dl) == 0: return None, None
         loss = 0.0
         acc = 0.0
 
@@ -159,6 +157,28 @@ class Model(Trainer):
         loss /= len(dl.dataset)
         acc /= len(dl.dataset)
         return loss, acc
+
+
+    def pred_1iter(self, dl, categorize=True, label=False):
+        outputs = None
+        labels = None
+        with torch.no_grad():
+            for input_b, label_b in dl:
+                input_b = input_b.to(self.device)
+                output_b = self.network(input_b)
+                output_b = output_b.detach()
+                if categorize:
+                    _, pred = torch.max(output_b, dim=1)
+                    output_b = pred
+
+                if outputs is None: outputs = output_b
+                else: outputs = torch.cat((outputs, output_b), dim=0)
+
+                if label:
+                    if labels is None: labels = label_b
+                    else: labels = labels.extend(label_b)
+
+        return outputs, labels
 
 
     def get_sd(self): return self.network.state_dict()
@@ -224,6 +244,16 @@ class Model(Trainer):
         self.optimizer.load_state_dict(ckpt["optimizer_sd"])
         try: self.scheduler.state_dict(ckpt["scheduler_sd"])
         except: pass
+
+
+    def mlflow_save_sd(self, mlflow_obj, path='state_dict.pkl'):
+        sd = self.get_sd()
+        self.mlflow_save(mlflow_obj, sd, path)
+
+
+    # def mlflow_load_sd(self, mlflow_obj, path='state_dict.pkl'):
+    #     sd = self.get_sd()
+    #     self.mlflow_save(mlflow_obj, sd, path)
         
 
 
@@ -232,16 +262,13 @@ class EEModel(Model):
         super().__init__(network=network, loss_func=loss_func, optimizer=optimizer, scheduler_t=scheduler_t, device=device)
         
         
-    def val_1epoch(self, dl, log_layer=None):
+    def val_estats(self, dl, log_layer):
         if len(dl.dataset) == 0: return
-        loss = 0.0
-        acc = 0.0
+        loss_l = 0.0
+        acc_l = 0.0
 
-        if log_layer is not None:
-            loss_l = 0.0
-            acc_l = 0.0
-            hm = HookManager(log_layer)
-            hm.register()
+        hm = HookManager(log_layer)
+        hm.register()
 
         self.network.eval()  # モデルを評価モードにする
 
@@ -251,22 +278,17 @@ class EEModel(Model):
                 label_b = label_b.to(self.device)
 
                 output_b = self.network(input_b)
-                loss_b = self.loss_func(output_b, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
-                loss += loss_b.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
-                _, pred = torch.max(output_b.detach(), dim=1)
-                acc += torch.sum(pred == label_b.data).item()
 
-                if log_layer is not None:
-                    output_l = hm.output.view(output_l.shape[0], self.network.ee_groups, -1)
-                    
-                    output_l = output_l[:, [0, 1, 2, 3]]
-                    # output_l = output_l[:, 0:self.network.ee_groups]
-                    output_l = output_l.mean(dim=1)
+                output_l = hm.output.view(output_l.shape[0], self.network.ee_groups, -1)
+                
+                output_l = output_l[:, [0, 1, 2, 3]]
+                # output_l = output_l[:, 0:self.network.ee_groups]
+                output_l = output_l.mean(dim=1)
 
-                    loss_bl = self.loss_func(output_l, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
-                    loss_l += loss_bl.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
-                    _, pred = torch.max(output_l.detach(), dim=1)
-                    acc_l += torch.sum(pred == label_b.data).item()
+                loss_bl = self.loss_func(output_l, label_b)  # 損失(出力とラベルとの誤差)の定義と計算 tensor(scalar, device, grad_fn)のタプルが返る
+                loss_l += loss_bl.item()*len(input_b) # .item()で1つの値を持つtensorをfloatに
+                _, pred = torch.max(output_l.detach(), dim=1)
+                acc_l += torch.sum(pred == label_b.data).item()
 
         if log_layer is not None:
             hm.remove()
@@ -340,7 +362,7 @@ class Ens(Trainer):
         self.mlflow_save(mlflow_obj, sd_list, path)
 
 
-    # def mlflow_load_state_dict(self, mlflow_obj, path='state_dict_list.pkl'):
+    # def mlflow_load_sd(self, mlflow_obj, path='state_dict_list.pkl'):
     #     sd_list = self.get_sds()
     #     self.mlflow_save(self, mlflow_obj, sd_list, path)
 

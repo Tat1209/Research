@@ -75,43 +75,31 @@ class Datasets:
         # seed はデータセットの順番 "arange" は並び替えなし
         transform = torchvision.transforms.Compose(transform_l)
         ds = self._fetch_base_ds(ds_str, transform)
+        # これらは格納する必要あり
         ds.ds_str = ds_str
+        ds.ds_name = ds.__class__.__name__
 
-        if label_balance: data_num, indices = self._indices_perm_lb(ds, seed)
-        else: data_num, indices = self._indices_perm(ds, seed)
+        if label_balance: indices = self._indices_perm_lb(ds, seed)
+        else: indices = self._indices_perm(ds, seed)
         
-        if ex_range is None:
-            if not isinstance(in_range, tuple): in_range = (0, in_range)
-            idx_range = (int(in_range[0] * data_num), int(in_range[1] * data_num))
-            indices = indices[idx_range[0]:idx_range[1]]
-
-        else:
-            if not isinstance(ex_range, tuple): ex_range = (0, ex_range)
-            idx_range = (int(ex_range[0] * data_num), int(ex_range[1] * data_num))
-            indices = indices[:idx_range[0]]+indices[idx_range[1]:]
-
-        sds = Subset(ds, indices=indices)
-        sds.ds_name = ds.__class__.__name__
-        sds.ds_str = ds_str
+        sds = MySubset(ds, indices=indices)
         
         return sds
 
 
     def _indices_perm(self, ds, seed):
         data_num = len(ds)
-        
         if seed == "arange": indices = torch.arange(data_num)
         else:
             if seed is not None: torch.manual_seed(seed)
             indices = torch.randperm(data_num)
-        
+            
         indices = indices.tolist()
         
-        return data_num, indices
+        return indices
 
 
     def _indices_perm_lb(self, ds, seed):
-        data_num = len(ds)
         if seed is not None  and  seed != "arange": torch.manual_seed(seed)
 
         try: label_d, len_d = torch.load(f"{self.root}{ds.ds_str}.ld")
@@ -119,7 +107,6 @@ class Datasets:
             self.ds_to_labeldict(ds)
 
             label_d, len_d = torch.load(f"{self.root}{ds.ds_str}.ld")
-
 
         keys = list(len_d.keys())
         values = list(len_d.values())
@@ -163,13 +150,12 @@ class Datasets:
             value = shuffled_label_d[key][0] # label_d[key]のリストから先頭の要素を取り出す
             indices.append(value)
             shuffled_label_d[key] = shuffled_label_d[key][1:] # label_d[key]のリストから先頭の要素を削除する
-            
-        return data_num, indices
+
+        return indices
 
 
     def ds_to_labeldict(self, ds, batch_size=100):
-        # tmp_ds = self(ds.ds_str, transform_l=[Trans.color, Trans.tsr, Trans.resize(1, 1)], seed="arange")
-        tmp_ds = self(ds.ds_str, transform_l=[Trans.color, Trans.tsr, Trans.resize(1, 1)], seed="arange")
+        tmp_ds = self(ds.ds_str, transform_l=[Trans.tsr, Trans.pil, Trans.color, Trans.tsr, Trans.resize(1, 1)], seed="arange")
         dl = DataLoader(tmp_ds, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=False)
 
         labels = None   # label のリストを作成
@@ -199,8 +185,60 @@ class Datasets:
         return save_obj
 
 
+class MySubset(Subset):
+    def __init__(self, dataset, indices=None):
+        super().__init__(dataset, indices=indices)
+        self.ds_name = dataset.ds_name
+        self.ds_str = dataset.ds_str
+
+
+    def __repr__(self) -> str:  
+        format_string = self.__class__.__name__ + ' (\n'
+        for attr in dir(self):
+            if not attr.startswith("_") and not callable(getattr(self, attr)): # exclude special attributes and methods
+                value = getattr(self, attr)
+                format_string += f"{attr} = {value}\n"
+        format_string += ')'
+        return format_string
+    
+
+    def in_range(self, range_t):
+        data_num = len(self)
+        if not isinstance(range_t, tuple): range_t = (0, range_t)
+        idx_range = (int(range_t[0] * data_num), int(range_t[1] * data_num))
+        indices = indices[idx_range[0]:idx_range[1]]
+        
+        return MySubset(self, indices)
+
+
+    def ex_range(self, range_t):
+        data_num = len(self)
+        if not isinstance(range_t, tuple): range_t = (0, range_t)
+        idx_range = (int(range_t[0] * data_num), int(range_t[1] * data_num))
+        # indices = torch.cat([indices[:idx_range[0]], indices[idx_range[1]:]], dim=0)
+        indices = indices[:idx_range[0]]+indices[idx_range[1]:]
+
+        return MySubset(self, indices)
+
+
+
 def dl(ds, batch_size, shuffle=True):
-    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=2, pin_memory=True)
+    try: dl = DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=2, pin_memory=True)
+    except ValueError: dl = None
+        # EmptyDataSet = type('EmptyDataSet', (), {})
+        # EmptySubset = type('EmptySubset', (), {'__len__': lambda self: 0})
+        # EmptyDataLoader = type('EmptyDataLoader', (), {'__len__': lambda self: 0})
+        # ds = EmptyDataSet()
+        # sds = EmptySubset()
+        # sds.ds_name = None
+        # sds.ds_str = None
+        
+        # dl = EmptyDataLoader()
+        # dl.dataset = sds
+    return dl
+
+
+        
 
 
 
