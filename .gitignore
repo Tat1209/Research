@@ -1,4 +1,5 @@
 __pycache__/
+
 assets/datasets/
 mlruns/
 sakana/
@@ -6,6 +7,9 @@ sakana/
 *.csv
 *.zip
 *.pkl
+*.pt
+
+exp_*/
 
 *.ckpt
 *.sqlite3

@@ -10,16 +10,19 @@ from trans import Trans
 
 
 class FixRandomDataset(Dataset):
-    def __init__(self, size):
+    def __init__(self, size, transform=None):
         super().__init__()
 
         torch.manual_seed(42)
         self.data = torch.rand(size)
+        self.transform = transform
 
     def __getitem__(self, index):
         data = self.data.detach().clone()
         target = index
         # target = 1
+
+        if self.transform is not None: data = self.transform(data)
         return data, target
 
     def __len__(self):
@@ -38,7 +41,7 @@ class FukuiDataset(Dataset):
     def __getitem__(self, idx):
         x = self.data[idx]
         y = self.labels[idx]
-        if self.transform:
+        if self.transform is not None:
             x = self.transform(x)
             # y = self.transform(y)
         return x, y
@@ -66,7 +69,7 @@ class Datasets:
             case "imagenet": return torchvision.datasets.ImageNet(root=self.root, split='val', transform=transform)
             case "ai-step_train": return FukuiDataset("/home/haselab/Documents/tat/Research/app/ai-step2/fukui_train_32_60_ver2.pkl", transform=transform)
             case "ai-step_test": return FukuiDataset("/home/haselab/Documents/tat/Research/app/ai-step2/kanazawa_test_32_60_ver2.pkl", transform=transform)
-            case "fix_rand": return FixRandomDataset((3, 32, 32))
+            case "fix_rand": return FixRandomDataset((3, 32, 32), transform=transform)
 
             case _: raise Exception("Invalid name.")
 

@@ -6,33 +6,52 @@ import numpy as np
 import torch
 from torchinfo import summary
 
-def arc_check(network, out_file=False, file_name='arccheck.txt', dl=None, input_size=(200, 3, 256, 256), verbose=1, col_names=["input_size", "output_size", "kernel_size", "num_params", "mult_adds"], row_settings=["var_names"]):
+
+def arc_check(
+    network,
+    out_file=False,
+    file_name="arccheck.txt",
+    dl=None,
+    input_size=(200, 3, 256, 256),
+    verbose=1,
+    col_names=["input_size", "output_size", "kernel_size", "num_params", "mult_adds"],
+    row_settings=["var_names"],
+):
     # dl もしくはinput_sizeを指定
     if dl is not None:
         input_b, _ = next(iter(dl))
         input_size = input_b.shape
     try:
-        temp_out = io.StringIO()
-        sys.stdout = temp_out
-        summary(model=network, input_size=input_size, verbose=verbose, col_names=col_names, row_settings=row_settings)
+        out_tmp = io.StringIO()
+        sys.stdout = out_tmp
+        summary(
+            model=network,
+            input_size=input_size,
+            verbose=verbose,
+            col_names=col_names,
+            row_settings=row_settings,
+        )
     finally:
         sys.stdout = sys.__stdout__
-    summary_str = temp_out.getvalue()
+    summary_str = out_tmp.getvalue()
 
     if out_file:
-        with open(file_name, 'w') as f: f.write(summary_str)
-    
+        with open(file_name, "w") as f:
+            f.write(summary_str)
+
     return summary_str
 
 
 def sched_repr(scheduler) -> str:
-    format_string = scheduler.__class__.__name__ + ' (\n'
+    format_string = scheduler.__class__.__name__ + " (\n"
     for attr in dir(scheduler):
-        if not attr.startswith("_") and not callable(getattr(scheduler, attr)): # exclude special attributes and methods
-            if attr.startswith("optimizer"): value = f'{getattr(scheduler, attr).__class__.__name__}()'
-            else: value = getattr(scheduler, attr)
+        if not attr.startswith("_") and not callable(getattr(scheduler, attr)):  # exclude special attributes and methods
+            if attr.startswith("optimizer"):
+                value = f"{getattr(scheduler, attr).__class__.__name__}()"
+            else:
+                value = getattr(scheduler, attr)
             format_string += f"{attr} = {value}\n"
-    format_string += ')'
+    format_string += ")"
     return format_string
 
 
@@ -51,25 +70,33 @@ def torch_fix_seed(seed=42):
 def get_patial_net(network, a_tuple, b_tuple):
     model = network.children()
     num_skip = 0
-    for l in a_tuple:
-        for _ in range(l): 
-            try: tmp = next(model)
-            except: break
-            num_skip += 1
-        try: model = next(model).children()
-        except: break
-        
-    layers = []
-    model = network.children()
-    for l in b_tuple:
-        for _ in range(l): 
+    for li in a_tuple:
+        for _ in range(li):
             try:
                 tmp = next(model)
-                if num_skip <= 0: layers.append(tmp)
-            except: break
+            except Exception:
+                break
+            num_skip += 1
+        try:
+            model = next(model).children()
+        except Exception:
+            break
+
+    layers = []
+    model = network.children()
+    for li in b_tuple:
+        for _ in range(li):
+            try:
+                tmp = next(model)
+                if num_skip <= 0:
+                    layers.append(tmp)
+            except Exception:
+                break
             num_skip -= 1
-        try: model = next(model).children()
-        except: break
+        try:
+            model = next(model).children()
+        except Exception:
+            break
 
     return torch.nn.Sequential(*layers)
 
@@ -86,8 +113,6 @@ def copy_params_ee(models, ee_model):
                 ee_params[name] = torch.cat([param[name].clone().detach() for param in params_l], dim=0)
 
     ee_model.network.load_state_dict(ee_params)
-
-
 
     # def __repr__(self) -> str:
     #     format_string = f'{self.__class__.__name__}()\n'
