@@ -6,19 +6,14 @@ class HookManager:
         self.input = None
         self.output = None
 
-
     def hook(self, module, input, output):
         self.output = output.detach().clone()
 
-
     def register(self):
         self.handle = self.layer.register_forward_hook(self.hook)
-        
 
     def remove(self):
         self.handle.remove()
-
-
 
     # def val_1epoch(self, dl, log_layer=None):
     #     if len(dl.dataset) == 0: return
@@ -47,7 +42,6 @@ class HookManager:
     #             acc += torch.sum(pred == label_b.data).item()
 
     #             if log_layer is not None: print(features.shape)
-
 
     #     if log_layer is not None: handle.remove()
 

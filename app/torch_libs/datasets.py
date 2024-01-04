@@ -1,8 +1,13 @@
+import random
+import itertools
 import pickle
+from copy import copy
 
+import numpy as np
 import torch
 import torchvision
 from torch.utils.data import Dataset
+from torchvision.datasets.vision import VisionDataset
 from torch.utils.data import DataLoader
 from torch.utils.data import Subset
 
@@ -26,338 +31,366 @@ class FixRandomDataset(Dataset):
         return 10000
 
 
-class FukuiDataset(Dataset):
-    def __init__(self, pkl_file, transform=None):
-        with open(pkl_file, "rb") as f:
-            (self.data, self.labels) = pickle.load(f)
+class PklToDataset(Dataset):
+    def __init__(self, pkl_path, transform=None, target_transform=None):
+        with open(pkl_path, "rb") as f:
+            (self.datas, self.targets) = pickle.load(f)
         self.transform = transform
+        self.target_transform = target_transform
 
     def __len__(self):
-        return len(self.data)
+        return len(self.datas)
 
     def __getitem__(self, idx):
-        x = self.data[idx]
-        y = self.labels[idx]
+        data = self.datas[idx]
+        target = self.targets[idx]
         if self.transform:
-            x = self.transform(x)
-            # y = self.transform(y)
-        return x, y
+            data = self.transform(data)
+        if self.target_transform:
+            target = self.target_transform(target)
+        return data, target
 
 
 class Datasets:
-    """
-    Ex.)
-    ds = Datasets(root='dir/to/datasets/')
-    train_loader = dl(ds("cifar100_train", train_trans), batch_size, shuffle=True)
-    for input, label in train_loader:
-    ...
-    """
-
     def __init__(self, root=None):
         self.root = root
 
-    def _fetch_base_ds(self, ds_str, transform):
+    def _base_ds(self, ds_str):
         match (ds_str):
             case "cifar100_train":
-                return torchvision.datasets.CIFAR100(root=self.root, train=True, transform=transform)
+                return torchvision.datasets.CIFAR100(root=self.root, train=True)
             case "cifar100_val":
-                return torchvision.datasets.CIFAR100(root=self.root, train=False, transform=transform)
+                return torchvision.datasets.CIFAR100(root=self.root, train=False)
             case "cifar10_train":
-                return torchvision.datasets.CIFAR10(root=self.root, train=True, transform=transform)
+                return torchvision.datasets.CIFAR10(root=self.root, train=True)
             case "cifar10_val":
-                return torchvision.datasets.CIFAR10(root=self.root, train=False, transform=transform)
+                return torchvision.datasets.CIFAR10(root=self.root, train=False)
             case "stl10_train":
-                return torchvision.datasets.STL10(root=self.root, split="train", transform=transform)
+                return torchvision.datasets.STL10(root=self.root, split="train")
             case "caltech":
-                return torchvision.datasets.Caltech101(root=self.root, target_type="category", transform=transform)
+                return torchvision.datasets.Caltech101(root=self.root, target_type="category")
             case "imagenet":
-                return torchvision.datasets.ImageNet(root=self.root, split="val", transform=transform)
-            case "ai-step_train":
-                return FukuiDataset(
-                    "/home/haselab/Documents/tat/Research/app/ai-step2/fukui_train_32_60_ver2.pkl",
-                    transform=transform,
-                )
-            case "ai-step_test":
-                return FukuiDataset(
-                    "/home/haselab/Documents/tat/Research/app/ai-step2/kanazawa_test_32_60_ver2.pkl",
-                    transform=transform,
-                )
+                return torchvision.datasets.ImageNet(root=self.root, split="val")
+            case "ai-step_l":
+                return PklToDataset(f"{self.root}fukui_train_32_60_ver2.pkl")
+            case "ai-step_ul":
+                return PklToDataset(f"{self.root}kanazawa_test_32_60_ver2.pkl")
             case "fix_rand":
                 return FixRandomDataset((3, 32, 32))
             case _:
                 raise Exception("Invalid name.")
 
-    def __call__(self, ds_str, transform_l=[], seed=None, label_balance=False):
-        # seed はデータセットの順番 "arange" は並び替えなし
-        ds = self._fetch_base_ds(ds_str, None)
+    def __call__(self, ds_str, transform_l=[], target_transform_l=[], u_seed=None):
+        ds = self._base_ds(ds_str)
         ds.ds_str = ds_str
         ds.ds_name = ds.__class__.__name__
+        ds.access = self
+        ds.u_seed = u_seed
 
-        if label_balance:
-            indices = self._indices_perm_lb(ds, seed)
+        indices = np.arange(len(ds))
+        transform = torchvision.transforms.Compose(transform_l)
+        target_transform = torchvision.transforms.Compose(target_transform_l)
+
+        return DatasetHandler(ds, indices, transform, target_transform)
+
+
+class DatasetHandler(Dataset):
+    # self.indicesは、常にnp.array(), label_l, label_dのvalueはlist
+    def __init__(self, dataset, indices, transform, target_transform):
+        self.dataset = dataset
+        self.indices = indices
+        self._transform = transform
+        self._target_transform = target_transform
+
+        self.ds_str = dataset.ds_str
+        self.ds_name = dataset.ds_name
+
+    def __getitem__(self, idx):
+        data, target = self.dataset[self.indices[idx]]
+
+        if self._transform:
+            data = self._transform(data)
+        if self._target_transform:
+            target = self._target_transform(target)
+
+        return data, target
+
+    def __len__(self):
+        return len(self.indices)
+
+    def shuffle(self, seed=None):
+        indices_new = self.indices.copy()
+        transform_new = copy(self._transform)
+        target_transform_new = copy(self._target_transform)
+
+        tmp = self.dataset.u_seed
+        if tmp is not None:
+            seed = tmp
+
+        if seed != "arange":
+            if seed is not None and not isinstance(seed, int):
+                raise TypeError("Variables must be of type int, 'None', or the string 'range'.")
+            np.random.seed(seed)
+            np.random.shuffle(indices_new)
+
+        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+
+    def in_range(self, a, b=None):
+        # indices_new = self.indices.copy()
+        transform_new = copy(self._transform)
+        target_transform_new = copy(self._target_transform)
+        range_t = (a, b) if b else (0, a)
+        if isinstance(a, tuple):
+            range_t = (a[0], a[1])
+        data_num = len(self.indices)
+        idx_range = (int(range_t[0] * data_num), int(range_t[1] * data_num))
+        indices_new = self.indices[idx_range[0] : idx_range[1]]
+
+        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+
+    def ex_range(self, a, b=None):
+        # indices_new = self.indices.copy()
+        transform_new = copy(self._transform)
+        target_transform_new = copy(self._target_transform)
+
+        range_t = (a, b) if b else (0, a)
+        if isinstance(a, tuple):
+            range_t = (a[0], a[1])
+        data_num = len(self.indices)
+        idx_range = (int(range_t[0] * data_num), int(range_t[1] * data_num))
+        indices_new = list(self.indices[: idx_range[0]]) + list(self.indices[idx_range[1] :])
+        indices_new = np.array(indices_new)
+
+        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+
+    def split(self, ratio, balance_label=False, shuffle=False):
+        # indices_new = self.indices.copy()
+        transform_new = copy(self._transform)
+        target_transform_new = copy(self._target_transform)
+
+        if balance_label:
+            label_l, label_d = self.fetch_ld()
+            a_d = {}
+            b_d = {}
+            for key in label_d:
+                lst = label_d[key]
+                if shuffle:
+                    random.shuffle(lst)
+                length = len(lst)
+                a_idx = lst[: int(length * ratio)]
+                b_idx = lst[int(length * ratio) :]
+
+                a_d[key] = a_idx
+                b_d[key] = b_idx
+
+            indices_a_new = np.array(list(itertools.chain(*a_d.values())), dtype=np.int32)
+            indices_b_new = np.array(list(itertools.chain(*b_d.values())), dtype=np.int32)
+
+            if shuffle:
+                np.random.shuffle(indices_a_new)
+                np.random.shuffle(indices_b_new)
+
         else:
-            indices = self._indices_perm(ds, seed)
+            indices_new = self.indices.copy()
+            if shuffle:
+                np.random.shuffle(indices_new)
+            length = len(indices_new)
+            indices_a_new = indices_new[: int(length * ratio)]
+            indices_b_new = indices_new[int(length * ratio) :]
 
-        return DSInfo(ds, indices, transform_l)
+        a = DatasetHandler(self.dataset, indices_a_new, transform_new, target_transform_new)
+        b = DatasetHandler(self.dataset, indices_b_new, transform_new, target_transform_new)
 
-    def _indices_perm(self, ds, seed):
-        data_num = len(ds)
+        return a, b
 
-        if seed == "arange":
-            indices = torch.arange(data_num)
-        else:
-            if seed is not None:
-                torch.manual_seed(seed)
-            indices = torch.randperm(data_num)
+    def transform(self, transform_l):
+        indices_new = self.indices.copy()
+        # transform_new = copy(self._transform)
+        target_transform_new = copy(self._target_transform)
 
-        indices = indices.tolist()
+        transform_new = torchvision.transforms.Compose(transform_l)
+        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
 
-        return indices
+    def target_transform(self, target_transform_l):
+        indices_new = self.indices.copy()
+        transform_new = copy(self._transform)
+        # target_transform_new = copy(self._target_transform)
 
-    def _indices_perm_lb(self, ds, seed):
-        if seed is not None and seed != "arange":
-            torch.manual_seed(seed)
+        target_transform_new = torchvision.transforms.Compose(target_transform_l)
+        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
 
-        try:
-            label_d, len_d = torch.load(f"{self.root}{ds.ds_str}.ld")
-        except FileNotFoundError:
-            self.ds_to_labeldict(ds)
-            label_d, len_d = torch.load(f"{self.root}{ds.ds_str}.ld")
+    def __add__(self, other):
+        # indices_new = self.indices.copy()
+        transform_new = copy(self._transform)
+        target_transform_new = copy(self._target_transform)
 
-        keys = list(len_d.keys())
-        values = list(len_d.values())
+        indices_new = np.concatenate((self.indices, other.indices))
 
-        length = sum(values)
-        len_array = torch.empty(length, dtype=torch.int)
-        max_value = max(values)
-        index = 0
-        counter = torch.zeros(len(keys), dtype=torch.int)  # len_arrayに格納されたkeyの個数をカウントするテンソルを初期化する
+        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
 
-        for _ in range(max_value):
-            valid_keys = [key for key in keys if counter[key] < values[key]]  # len_dのkeyのうち、まだvalue個格納されていないものを選択する
-            m = len(valid_keys)
-            if m > 0:
-                if seed == "arange":
-                    perm = torch.arange(m)
-                else:
-                    perm = torch.randperm(m)  # valid_keysをランダムにシャッフルする
+    def balance_label(self, seed=None):
+        # len(classes)ごとに取り出したとき、常に要素の数が極力均等になるように取得
+        # seed="arange"で、該当indeicdをクラスが若い順から順番に、indicesの小さい順でとってくる
+        # indices_new = self.indices.copy()
+        transform_new = copy(self._transform)
+        target_transform_new = copy(self._target_transform)
+
+        tmp = self.dataset.u_seed
+        if tmp is not None:
+            seed = tmp
+
+        if seed != "arange":
+            np.random.seed(seed)
+
+        label_l, label_d = self.fetch_ld()
+
+        # 各クラスのラベル数を取得・クラス名を取得
+        lens_d = {k: len(v) for k, v in label_d.items()}
+        class_d = lens_d.keys()
+
+        # クラス名だけで構成されたclass_arrayを作成
+        class_array = []
+        counter = lens_d.copy()
+        while True:
+            valid_keys = [c for c in class_d if 0 < counter[c]]  # len_dのkeyのうち、まだvalue個格納されていないものを選択する
+            if max(counter.values()) == 0:
+                break
+            for _ in range(min([labels for labels in counter.values() if 0 < labels])):
+                m = len(valid_keys)
+                perm = np.arange(m)
+                if seed != "arange":
+                    np.random.shuffle(perm)
                 shuffled_keys = [valid_keys[p] for p in perm]
 
                 for key in shuffled_keys:  # シャッフルされたkeyに対してループする
-                    len_array[index] = key
-                    index += 1
-                    counter[key] += 1
-                    if index == length:
-                        break
-                if index == length:
-                    break
+                    class_array.append(key)
+                    counter[key] -= 1
 
-        # label_dのすべてのkeyに対応するvalueのリストをランダムに並び替える
+        # label_dのすべてのkeyについて、その要素を全て並び替えたshuffled_label_dを作成
         shuffled_label_d = dict()
         for key in label_d.keys():
-            if seed == "arange":
-                perm = torch.arange(len(label_d[key]))
-            else:
-                perm = torch.randperm(len(label_d[key]))
-            perm = perm.tolist()
+            perm = np.array(label_d[key])
+            if seed != "arange":
+                perm = np.random.permutation(perm)
+            shuffled_label_d[key] = perm
 
-            shuffled_label_d[key] = [label_d[key][p] for p in perm]
-
-        indices = []
-        for key in len_array:
-            key = key.item()
+        # class_arrayでクラス、shuffled_label_dでindexを取得
+        indices_new = []
+        for key in class_array:
             value = shuffled_label_d[key][0]  # label_d[key]のリストから先頭の要素を取り出す
-            indices.append(value)
-            shuffled_label_d[key] = shuffled_label_d[key][1:]  # label_d[key]のリストから先頭の要素を削除する
+            indices_new.append(value)
+            shuffled_label_d[key] = shuffled_label_d[key][1:]  # shuffled_label_d[key]のリストから先頭の要素を削除する
 
-        return indices
+        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
 
-    def ds_to_labeldict(self, ds, batch_size=100):
-        # tmp_ds = self(ds.ds_str, transform_l=[Trans.color, Trans.tsr, Trans.resize(1, 1)], seed="arange")
-        tmp_ds = self(
-            ds.ds_str,
-            transform_l=[Trans.color, Trans.tsr, Trans.resize(1, 1)],
-            seed="arange",
-        )
-        dl = DataLoader(
-            tmp_ds,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=2,
-            pin_memory=False,
-        )
+    def mult_label(self, mult_dict=None, seed=None):
+        # indices_new = self.indices.copy()
+        transform_new = copy(self._transform)
+        target_transform_new = copy(self._target_transform)
 
-        labels = None  # label のリストを作成
-        try:
-            labels = torch.tensor(dl.dataset.dataset.targets)
-        except AttributeError:
-            for input_b, label_b in dl:
-                if labels is None:
-                    labels = label_b
-                else:
-                    labels = torch.cat([labels, label_b])
+        tmp = self.dataset.u_seed
+        if tmp is not None:
+            seed = tmp
 
-        # index と対応させ、label を key とし、index を item とした dict を作成
-        label_d = dict()
-        for idx, label in enumerate(labels):
-            label = label.item()
+        if seed != "arange":
+            np.random.seed(seed)
+
+        label_l, label_d = self.fetch_ld()
+        for k, v in mult_dict.items():
+            label_d[k] *= v
+        indices_new = [item for sublist in label_d.values() for item in sublist]
+
+        if seed == "arange":
+            indices_new.sort()
+        else:
+            np.random.seed(seed)
+            np.random.shuffle(indices_new)
+
+        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+
+    def fetch_ld(self, output=False):
+        # try:
+        #     label_l = torch.tensor(dl.dataset.dataset.targets)
+        # except AttributeError:
+
+        blabel_l, blabel_d = self.fetch_base_ld()
+
+        label_l = []  # label のリストを作成
+        label_d = dict()  # index と対応させ、label を key とし、index を item とした dict を作成
+        for idx in self.indices:
+            label = blabel_l[idx]
+            label_l.append(label)
             if label_d.get(label) is None:
                 label_d[label] = [idx]
             else:
                 label_d[label].append(idx)
 
         label_d = dict(sorted(label_d.items()))
-        # for label in label_d.keys(): print(f"{label}:{len(label_d[label])} items")
-        len_d = dict()
-        for key, value in label_d.items():
-            len_d[key] = len(value)
 
-        save_obj = (label_d, len_d)
-        save_path = self.root + dl.dataset.ds_str + ".ld"
+        if output:
+            for label in label_d.keys():
+                print(f"{label}: {len(label_d[label])} items")
+
+        return label_l, label_d
+
+    def fetch_weight(self, base_classes=False, num_classes=-1):
+        """
+        Ex.)
+        loss_func = torch.nn.CrossEntropyLoss(weight=train_ds.fetch_weight(base_classes=True).to(device))
+        """
+        label_l, label_d = self.fetch_ld()
+        if base_classes:
+            blabel_l, blabel_d = self.fetch_base_ld()
+            classes = max(blabel_d.keys()) + 1
+
+        elif num_classes != -1:
+            classes = num_classes
+
+        else:
+            classes = max(label_d.keys()) + 1
+        label_count = [1.0 / len(label_d.get(i, [])) for i in range(classes)]  # インデックスが数字以外だと機能しない
+        weight_tsr = torch.tensor(label_count, dtype=torch.float)
+
+        return weight_tsr
+
+    def fetch_base_ld(self):
+        try:
+            label_l, label_d = torch.load(f"{self.dataset.access.root}{self.ds_str}.ld")
+        except FileNotFoundError:
+            label_l, label_d = self._save_labels()
+
+        return label_l, label_d
+
+    def _save_labels(self):
+        base_dsh = self.dataset.access(self.ds_str, u_seed="arange")  # DatasetHandler().fetch_ldを使うため、一時的に作成
+        # base_ds = self.dataset.access._base_ds(ds_str)
+        label_l, label_d = base_dsh._make_ld()
+
+        save_obj = (label_l, label_d)
+        save_path = self.dataset.access.root + self.ds_str + ".ld"
         torch.save(save_obj, save_path)
-        print(f"Saved it to the following path: {save_path}")
+        print(f"Saved label data to the following path: {save_path}")
 
-        return save_obj
+        return label_l, label_d
 
+    def _make_ld(self):
+        # fetch_ldほぼ同じだが、ところどころ違うので別で定義した方が楽そう
+        # base_dsh = self.dataset.access(self.ds_str, seed="arange")  # base_dshインスタンスを作成し、selfで呼び出すことを前提
 
-class DSInfo:
-    def __init__(self, ds, indices, transform_l):
-        self.ds = ds
-        self.indices = indices.copy()
-        self.transform_l = transform_l.copy()
+        label_l = []  # label のリストを作成
+        label_d = dict()  # index と対応させ、label を key とし、index を item とした dict を作成
+        for idx in self.indices:
+            _, label = self.dataset[idx]
+            label_l.append(label)
+            if label_d.get(label) is None:
+                label_d[label] = [idx]
+            else:
+                label_d[label].append(idx)
 
-    def in_range(self, range_t):
-        data_num = len(self.indices)
-        if not isinstance(range_t, tuple):
-            range_t = (0, range_t)
-        idx_range = (int(range_t[0] * data_num), int(range_t[1] * data_num))
-        indices_new = self.indices[idx_range[0] : idx_range[1]]
+        label_d = dict(sorted(label_d.items()))
 
-        return DSInfo(self.ds, indices_new, self.transform_l)
-        # return DSInfo(self.ds, indices_new, self.transform_l.copy())    # イニシャライザでコピーせず、関数内でコピーするならこっち
-
-    def ex_range(self, range_t):
-        data_num = len(self.indices)
-        if not isinstance(range_t, tuple):
-            range_t = (0, range_t)
-        idx_range = (int(range_t[0] * data_num), int(range_t[1] * data_num))
-        indices_new = self.indices[: idx_range[0]] + self.indices[idx_range[1] :]
-
-        return DSInfo(self.ds, indices_new, self.transform_l)
-
-    def transform(self, transform_l):
-        return DSInfo(self.ds, self.indices, transform_l)
-
-    def _create_sds(self):
-        self.ds.transform = torchvision.transforms.Compose(self.transform_l)
-
-        sds = Subset(self.ds, indices=self.indices)
-        sds.ds_str = self.ds.ds_str
-        sds.ds_name = self.ds.ds_name
-
-        return sds
-
-    def __len__(self):
-        return len(self.indices)
+        return label_l, label_d
 
 
-def dl(ds, batch_size, shuffle=True):
-    if isinstance(ds, DSInfo):
-        ds = ds._create_sds()
-
-    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=2, pin_memory=True)
-
-    # def _clone(self):
-    #     new_di = self._clone()
-    #     new_di.indices = indices
-    #     return self.new_di()
-    #     return copy.deepcopy(self)
-
-
-# # torch.manual_seedを避けたいとき
-# def _idx_setter(self, dataset, seed):
-#     data_num = len(dataset)
-#     idx_list = list(range(data_num))
-#     if seed != "arange":
-#         random.seed(seed)
-#         random.shuffle(idx_list)
-
-#     return data_num, idx_list
-
-
-# return _Loader(dataset=ds, batch_size=batch_size, shuffle=shuffle, num_workers=2, pin_memory=True)
-# class _Loader(DataLoader):
-#     def __init__(self, *args, **kwargs):
-#         self.args_init = args
-#         self.kwargs_init = kwargs
-#         super().__init__(*args, **kwargs)
-
-
-#     def __repr__(self) -> str:
-#         format_string = f'{self.__class__.__name__}(\n'
-
-#         for value in self.args_init:
-#             format_string += f'dataset = {value.__class__.__name__}()\n'    # 必ず dataset の引数が入る
-
-#         for key, value in self.kwargs_init.items():
-#             if key == 'dataset': format_string += f'{getattr(self, key).__class__.__name__}()\n'
-#             else: format_string += f"{key} = {value}\n"
-#         format_string += ')'
-#         return format_string
-
-
-# class _Subset(Subset):
-#     def __init__(self, *args, **kwargs):
-#         # self.args_init = args
-#         # self.kwargs_init = kwargs
-#         super().__init__(*args, **kwargs)
-#         self.ds_name = self.dataset.ds_name
-
-#     def __repr__(self) -> str:
-#         format_string = self.__class__.__name__ + ' (\n'
-#         for attr in dir(self):
-#             if not attr.startswith("_") and not callable(getattr(self, attr)): # exclude special attributes and methods
-#                 value = getattr(self, attr)
-#                 format_string += f"{attr} = {value}\n"
-#         format_string += ')'
-#         return format_string
-
-
-# except FileNotFoundError as e:
-#     error_msg = f'\nWhen "label_balanced = True", the file "a" must exist, but it does not.\n'\
-#             'Before executing, run the following code to create a file containing the label data.\n\n'\
-#             'from datasets import Datasets, dl\n'\
-#             f'ds = Datasets("{self.root}")\n'\
-#             f'dl = dl(ds("{ds.ds_str}", seed="arange"), batch_size=100, shuffle=False)\n'\
-#             f'ds.dl_to_labeldict(dl)\n'
-#     print(e)
-#     print(error_msg)
-#     raise FileNotFoundError(f"{e}\n{error_msg}")
-
-
-# ds.transformを更新する過程で結局.create()みたいなのがいる。このままSubsetで返すようにすると、subsetとしてふるまうがtransformが設定されていないやつが返ってきて分かりづらい。
-# 区別するためにをDSInfoを代わりに用いる
-# class MySubset(Subset):
-#     def __init__(self, ds, indices, transform_l=[]):
-#         self.ds = ds
-#         self.indices = indices.copy()
-#         self.transform_l = transform_l.copy()
-#         super().__init__(ds, indices)
-
-
-#     def in_range(self, range_t):
-#         data_num = len(self)
-#         if not isinstance(range_t, tuple): range_t = (0, range_t)
-#         idx_range = (int(range_t[0] * data_num), int(range_t[1] * data_num))
-#         self.indices = self.indices[idx_range[0]:idx_range[1]]
-
-#         return MySubset(self.ds, self.indices, self.transform_l)
-
-
-#     def ex_range(self, range_t):
-#         data_num = len(self)
-#         if not isinstance(range_t, tuple): range_t = (0, range_t)
-#         idx_range = (int(range_t[0] * data_num), int(range_t[1] * data_num))
-#         self.indices = self.indices[:idx_range[0]] + self.indices[idx_range[1]:]
-
-#         return MySubset(self.ds, self.indices, self.transform_l)
+def dl(ds, batch_size, shuffle=True, num_workers=2, pin_memory=True, **kwargs):
+    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=pin_memory, **kwargs)

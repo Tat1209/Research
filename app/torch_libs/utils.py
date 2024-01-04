@@ -1,6 +1,8 @@
 import io
 import random
 import sys
+from pathlib import Path
+from PIL import Image
 
 import numpy as np
 import torch
@@ -113,6 +115,44 @@ def copy_params_ee(models, ee_model):
                 ee_params[name] = torch.cat([param[name].clone().detach() for param in params_l], dim=0)
 
     ee_model.network.load_state_dict(ee_params)
+
+
+def calc_mean_std(dl, formatted=False):
+    elem = None
+    for input, _ in dl:
+        # p は、バッチの次元を除いたものが2次元データなら(1, 0, 2, 3)、1次元データなら(1, 0, 2)
+        p = torch.arange(len(input.shape))
+        p[0], p[1] = 1, 0
+        p = tuple(p)
+
+        elem_b = input.permute(p).reshape(input.shape[1], -1)
+        if elem is None:
+            elem = elem_b
+        else:
+            elem = torch.cat([elem, elem_b], dim=1)
+
+    mean = elem.mean(dim=1).tolist()
+    std = elem.std(dim=1).tolist()
+
+    if formatted:
+        return f"transforms.Normalize(mean={mean}, std={std}, inplace=True)"
+    else:
+        return {"mean": mean, "std": std}
+
+
+def ds_to_folder(ds, num, path):
+    path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
+    ds_it = iter(ds)
+    for i in range(num):
+        img, label = next(ds_it)
+        img = np.array(img, dtype=np.uint8)
+        img = Image.fromarray(img)
+        img_name = f"{i}_label.png"
+        img.save(path / Path(img_name), format="png")
+
+    # tmp_ds = ds.fetch_ds("ai-step_train")
+    # ds_to_folder(tmp_ds, 100, "/home/haselab/Documents/tat/Research/app/ai-step2/imgs"
 
     # def __repr__(self) -> str:
     #     format_string = f'{self.__class__.__name__}()\n'

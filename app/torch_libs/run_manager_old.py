@@ -31,9 +31,6 @@ class RunManager:
 
         self.start_time = time()
 
-    def __call__(self, fname):
-        return self.run_path / Path(fname)
-
     def _get_run_id(self, exp_path):
         dir_names = list(exp_path.iterdir())
         dir_nums = [int(dir_name.name) for dir_name in dir_names]
@@ -47,24 +44,23 @@ class RunManager:
     #     self.exp_path = self.pa_path / Path(exp_name)
     #     self.run_path = self.exp_path / Path(self._get_run_id(self.exp_path))
 
-    def log_text(self, text, fname):
-        with open(self.run_path / Path(str(fname)), "w") as fh:
+    def log_text(self, text, file_name):
+        with open(self.run_path / Path(str(file_name)), "w") as fh:
             fh.write(text)
 
-    def log_csv(self, df, fname, *args, **kwargs):
-        df.write_csv(self.run_path / Path(fname), *args, **kwargs)
-        # df.write_csv(run.run_path / Path("xxx"), ...)
-
-    def log_torch_save(self, object, fname):
-        torch.save(object, self.run_path / Path(fname))
+    def log_torch_save(self, object, file_name):
+        torch.save(object, self.run_path / Path(file_name))
 
     def log_param(self, name, value):
-        self.log_param({name: value})
+        if hasattr(self, "df_params"):
+            # self.df_params = pl.concat([self.df_params, pl.DataFrame({name: [value]})], how="horizontal")
+            self.df_params = self.df_params.hstack(pl.DataFrame({name: [value]}))
+        else:
+            self.df_params = pl.DataFrame({name: [value]})
 
     # ひとつひとつかくより、self.run_path渡した方がいい?
-    def log_df(self, df, fname):
-        df.write_csv(self.run_path / Path(fname))
-        # df.write_csv(self(fname))
+    def log_df(self, df, file_name):
+        df.write_csv(self.run_path / Path(file_name))
 
     def log_params(self, stored_dict):
         stored_dict = {k: [v] for k, v in stored_dict.items()}
@@ -74,7 +70,19 @@ class RunManager:
             self.df_params = pl.DataFrame(stored_dict)
 
     def log_metric(self, name, value, step=None):
-        self.log_metrics({name: value}, step=step)
+        if hasattr(self, "df_metrics"):
+            if step is None:
+                step = self.df_metrics["step"].max() + 1
+            if step in self.df_metrics["step"]:
+                self.df_metrics = self._df_set_elem(self.df_metrics, name, "step", step, value)
+                # self.df_metrics = self.df_metrics.with_columns(pl.when(self.df_metrics["step"] == step).then(value).otherwise(pl.col(name)).alias(name))
+            else:
+                df_tmp = pl.DataFrame({"step": [step], name: [value]})
+                self.df_metrics = pl.concat([self.df_metrics, df_tmp], how="diagonal")
+        else:
+            if step is None:
+                step = 1
+            self.df_metrics = pl.DataFrame({"step": [step], name: [value]})
 
     def log_metrics(self, stored_dict, step=None):
         if hasattr(self, "df_metrics"):
@@ -89,8 +97,7 @@ class RunManager:
         else:
             if step is None:
                 step = 1
-            stored_dict = {k: [v] for k, v in stored_dict.items()}
-            self.df_metrics = pl.DataFrame({"step": [step], **stored_dict})
+            self.df_metrics = pl.DataFrame({"step": [step], name: [value]})
 
     def _df_set_elem(self, df, column, index_column, index, value):
         # indexは存在しなければならない。columnは存在しないとき新たに作られる。
@@ -129,56 +136,45 @@ class RunsManager:
     def __init__(self, runs):
         self.runs = runs
 
-    def __getattr__(self, attr):
-        def wrapper(*args, **kwargs):
-            return_l = []
-            for i, run in enumerate(self.runs):
-                # new_args = []
-                # for arg in args:
-                #     if isinstance(arg, list) and len(arg) == len(self.runs):
-                #         new_arg = arg[i]
-                #     else:
-                #         new_arg = arg
-                #     new_args.append(new_arg)
-                new_args = [arg[i] if isinstance(arg, list) and len(arg) == len(self.runs) else arg for arg in args]
+    def log_text(self, text, file_name):
+        for i in range(len(self.runs)):
+            text_tmp = text[i] if isinstance(text, list) and len(text) == len(self.runs) else text
+            self.runs[i].log_text(text_tmp, file_name)
 
-                # new_kwargs = dict()
-                # for k, v in kwargs.items():
-                #     if isinstance(v, list) and len(v) == len(self.runs):
-                #         new_kwargs[k] = v[i]
-                #     else:
-                #         new_kwargs[k] = v
-                new_kwargs = {k: v[i] if isinstance(v, list) and len(v) == len(self.runs) else v for k, v in kwargs.items()}
-                return_l.append(getattr(run, attr)(*new_args, **new_kwargs))
-            return return_l
+    def log_torch_save(self, object, file_name):
+        for i in range(len(self.runs)):
+            object_tmp = object[i] if isinstance(object, list) and len(object) == len(self.runs) else object
+            self.runs[i].log_torch_save(object_tmp, file_name)
 
-        return wrapper
-
-    def __getitem__(self, idx):
-        return self.runs[idx]
-
-    # こいつらはこのままの形式だと格納できないから特別
     def log_param(self, name, value):
-        self.log_params({name: value})
+        for i in range(len(self.runs)):
+            value_tmp = value[i] if isinstance(value, list) and len(value) == len(self.runs) else value
+            self.runs[i].log_param(name, value_tmp)
 
     def log_params(self, stored_dict):
-        for i, run in enumerate(self.runs):
+        for i in range(len(self.runs)):
             new_stored_dict = dict()
             for k, v in stored_dict.items():
                 v_tmp = v[i] if isinstance(v, list) and len(v) == len(self.runs) else v
                 new_stored_dict[k] = v_tmp
-            run.log_params(new_stored_dict)
+            self.runs[i].log_params(new_stored_dict)
 
     def log_metric(self, name, value, step=None):
-        self.log_metrics({name: value}, step=step)
+        for i in range(len(self.runs)):
+            value_tmp = value[i] if isinstance(value, list) and len(value) == len(self.runs) else value
+            self.runs[i].log_metric(name, value_tmp, step)
 
     def log_metrics(self, stored_dict, step=None):
-        for i, run in enumerate(self.runs):
+        for i in range(len(self.runs)):
             new_stored_dict = dict()
             for k, v in stored_dict.items():
                 v_tmp = v[i] if isinstance(v, list) and len(v) == len(self.runs) else v
                 new_stored_dict[k] = v_tmp
-            run.log_metrics(new_stored_dict, step=step)
+            self.runs[i].log_metrics(new_stored_dict, step)
+
+    def ref_stats(self, itv=None, step=None, last_step=None):
+        for i in range(len(self.runs)):
+            self.runs[i].ref_stats(itv, step, last_step)
 
 
 class RunViewer:
@@ -207,57 +203,10 @@ class RunViewer:
             try:
                 df_stats = pl.read_csv(stats_path)
                 df_id = pl.DataFrame({"run_id": run_id})
-                df_stats_wid = df_id.hstack(df_stats)
-                stats_l.append(df_stats_wid)
+                df_stats = df_id.hstack(df_stats)
+                stats_l.append(df_stats)
             except FileNotFoundError:
                 pass
         df = pl.concat(stats_l, how="diagonal").sort(pl.col("run_id"))
 
         return df
-
-    def write_stats(self, fname=None):
-        df = self.fetch_stats()
-        if fname is None:
-            df.write_csv(f"{self.exp_path}.csv")
-        else:
-            df.write_csv(str(self.pa_path / Path(fname)))
-
-    def fetch_metrics(self):
-        dir_names = list(self.exp_path.iterdir())
-        run_ids = [int(dir_name.name) for dir_name in dir_names]
-        stats_paths = [dir_name / Path("metrics.csv") for dir_name in dir_names]
-
-        stats_l = []
-        for run_id, stats_path in zip(run_ids, stats_paths):
-            try:
-                df_stats = pl.read_csv(stats_path)
-                df_stats_wid = df_stats.with_columns(pl.lit(run_id).alias("run_id"))
-                df_stats_wid = df_stats_wid.select(["run_id"] + df_stats.columns)
-                stats_l.append(df_stats_wid)
-            except FileNotFoundError:
-                # metrics.csvがない場合Errorが発生する。
-                pass
-        # df = pl.concat(stats_l, how="diagonal")
-        # df = pl.concat(stats_l, how="diagonal").sort(pl.col("run_id"))
-        df = pl.concat(stats_l, how="diagonal").sort(pl.col("step")).sort(pl.col("run_id"))
-
-        return df
-
-    def fetch_metrics_l(self):
-        dir_names = list(self.exp_path.iterdir())
-        run_ids = [int(dir_name.name) for dir_name in dir_names]
-        stats_paths = [dir_name / Path("metrics.csv") for dir_name in dir_names]
-
-        stats_l = []
-        for run_id, stats_path in zip(run_ids, stats_paths):
-            try:
-                df_stats = pl.read_csv(stats_path)
-                df_stats_wid = df_stats.with_columns(pl.lit(run_id).alias("run_id"))
-                df_stats_wid = df_stats_wid.select(["run_id"] + df_stats.columns)
-                stats_l.append(df_stats_wid)
-            except FileNotFoundError:
-                # metrics.csvがない場合Errorが発生する。
-                pass
-        # df = pl.concat(stats_l, how="diagonal").sort(pl.col("step"))
-
-        return stats_l

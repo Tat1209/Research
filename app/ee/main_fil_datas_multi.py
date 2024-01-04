@@ -6,8 +6,8 @@ work_path = "/home/haselab/Documents/tat/Research/"
 sys.path.append(f"{work_path}app/torch_libs/")
 
 from datasets import Datasets, dl
-from run_manager import RunManager, RunsManager
-from trainer import Model, Ens, EEModel, MultiTrain
+from run_manager import RunManager, RunsManager, RunViewer
+from trainer import Model, MultiTrain
 from trans import Trans
 import utils
 
@@ -26,29 +26,31 @@ ds = Datasets(root=f"{work_path}assets/datasets/")
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
-for fi in [[1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 64, 80, 96, 128]]:
-    for di in [1.0, 0.75, 0.5, 0.3, 0.2, 0.15, 0.1, 0.075, 0.05, 0.03, 0.02, 0.015, 0.01, 0.0075, 0.005, 0.0025]:
-        runs = [RunManager(exc_path=__file__, exp_name="exp_fil_data") for _ in fi]
+# for fi in [[1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 64, 80, 96, 128]]:
+#     for di in [1.0, 0.75, 0.5, 0.3, 0.2, 0.15, 0.1, 0.075, 0.05, 0.03, 0.02, 0.015, 0.01, 0.0075, 0.005, 0.0025]:
+for fi in [[1, 2, 3, 4, 5, 6]]:
+    for di in [1.0, 0.75, 0.5]:
+        exp_name = "exp_tmp"
+        runs = [RunManager(exc_path=__file__, exp_name=exp_name) for _ in fi]
         runs_mgr = RunsManager(runs)
 
         runs_mgr.log_param("max_lr", max_lr := 0.005)  # Adam
-        runs_mgr.log_param("epochs", epochs := int(100 / di))
+        runs_mgr.log_param("epochs", epochs := 10)
         runs_mgr.log_param("batch_size", batch_size := 125)
         runs_mgr.log_param("fils", fils := fi)
         runs_mgr.log_param("ensembles", ensembles := 1)
 
         runs_mgr.log_param("ensemble_type", ensemble_type := ["easy", "merge", "pure"][0])
-        runs_mgr.log_param("mixup", mixup := False)
         runs_mgr.log_param("train_trans", repr(train_trans := Trans.cf_git))
         runs_mgr.log_param("val_trans", repr(val_trans := Trans.cf_gen))
 
-        train_loader = dl(ds("cifar10_train", train_trans, label_balance=True).in_range(di), batch_size, shuffle=True)
+        train_loader = dl(ds("cifar10_train", train_trans).balance_label().in_range(di), batch_size, shuffle=True)
         val_loader = dl(ds("cifar10_val", val_trans), batch_size, shuffle=True)
 
         runs_mgr.log_param("num_data", len(train_loader.dataset))
         runs_mgr.log_param("iters/epoch", iters_per_epoch := len(train_loader))
-        runs_mgr.log_param("dataset", train_loader.dataset.ds_name)
-        runs_mgr.log_param("model_arc", model_arc)
+        runs_mgr.log_param("dataset", train_loader.dataset.ds_str)
+        runs_mgr.log_param("model_arc", net.__module__)
 
         models = []
         for fils in fi:
@@ -57,26 +59,26 @@ for fi in [[1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 64, 80,
             optimizer = torch.optim.Adam(network.parameters(), lr=max_lr)
             scheduler_t = (torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1), "epoch")
 
-            model = EEModel(network, loss_func, optimizer=optimizer, scheduler_t=scheduler_t, device=device)
+            model = Model(network, loss_func, optimizer, scheduler_t, device)
             models.append(model)
         mmodel = MultiTrain(models, device)
 
-        runs_mgr.log_param("params", [model.count_params() for model in mmodel.models])
+        runs_mgr.log_param("params", mmodel.count_params())
         hp_dict = {
-            "loss_func": [repr(model.loss_func) for model in mmodel.models],
-            "optimizer": [repr(model.optimizer) for model in mmodel.models],
-            "scheduler": [utils.sched_repr(model.scheduler_t[0]) for model in mmodel.models],
+            "loss_func": mmodel.repr_loss_func(),
+            "optimizer": mmodel.repr_optimizer(),
+            "scheduler": mmodel.repr_scheduler(),
         }
         runs_mgr.log_params(hp_dict)
-        runs_mgr.log_text([repr(model.network) for model in mmodel.models], "model_layers.txt")
-        runs_mgr.log_text([model.arc_check(dl=train_loader) for model in mmodel.models], "model_structure.txt")
+        runs_mgr.log_text(mmodel.repr_network(), "model_layers.txt")
+        runs_mgr.log_text(mmodel.arc_check(dl=train_loader), "model_structure.txt")
 
         print(f"{di=}, {fi=}, {sum(fi)=}, {batch_size=}")
 
         for e in range(epochs):
-            runs_mgr.log_metric("lr", [model.get_lr() for model in mmodel.models], step=e + 1)
+            runs_mgr.log_metric("lr", mmodel.get_lr(), step=e + 1)
 
-            train_loss, train_acc = mmodel.train_1epoch(train_loader, mixup=mixup)
+            train_loss, train_acc = mmodel.train_1epoch(train_loader)
             val_loss, val_acc = mmodel.val_1epoch(val_loader)
 
             met_dict = {"epoch": e + 1, "train_loss": train_loss, "train_acc": train_acc, "val_loss": val_loss, "val_acc": val_acc}
@@ -85,5 +87,7 @@ for fi in [[1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 64, 80,
             mmodel.printlog(met_dict, e + 1, epochs, itv=epochs / 4)
             runs_mgr.ref_stats(itv=5, step=e + 1, last_step=epochs)
 
-        runs_mgr.ref_stats()
-        runs_mgr.log_torch_save([model.get_sd() for model in mmodel.models], "state_dict.pt")
+        runs_mgr.log_torch_save(mmodel.get_sd(), "state_dict.pt")
+
+        rv = RunViewer(exc_path=__file__, exp_name=exp_name)
+        rv.write_stats()

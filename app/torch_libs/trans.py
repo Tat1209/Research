@@ -1,5 +1,8 @@
 import torch
 import torchvision
+
+# from torchvision.transforms import v2 as transforms
+
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.functional import rotate
@@ -8,6 +11,8 @@ from torchvision.transforms.functional import rotate
 class Trans:
     tsr = transforms.ToTensor()
     pil = transforms.ToPILImage()
+    scale_rgb = transforms.Lambda(lambda image: image / 255.0)
+    permute = transforms.Lambda(lambda tsr: tsr.permute(2, 0, 1))
 
     cf_norm = transforms.Normalize(
         mean=[0.5070751592371323, 0.48654887331495095, 0.4409178433670343],
@@ -15,7 +20,13 @@ class Trans:
         inplace=True,
     )
     in_norm = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], inplace=True)
+    as_norm = transforms.Normalize(
+        mean=[0.18503567576408386, 0.27679356932640076, 0.43360984325408936],
+        std=[0.08373230695724487, 0.07494986057281494, 0.06476051360368729],
+        inplace=True,
+    )
 
+    np_trance = transforms.Lambda(lambda x: -x)
     color = transforms.Lambda(lambda image: image.convert("RGB"))
     rotate90 = transforms.Lambda(lambda image: rotate(image, 90))
     rotate180 = transforms.Lambda(lambda image: rotate(image, 180))
@@ -27,9 +38,8 @@ class Trans:
         torchvision.transforms.RandAugment(**kwargs)
 
     def repeat_data(n):
-        return transforms.Lambda(
-            lambda tensor: torch.cat([tensor for _ in range(n)], dim=0)
-        )  # torch.tileだと、次元数をかえたときにタプルの記述を変えなければいけないため(1d => (n, 1), 2d => (n, 1, 1)、その必要が無いようにcatで実装
+        # torch.tileだと、次元数をかえたときにタプルの記述を変えなければいけないため(1d => (n, 1), 2d => (n, 1, 1)、その必要が無いようにcatで実装
+        return transforms.Lambda(lambda tensor: torch.cat([tensor for _ in range(n)], dim=0))
 
     def rotate(th):
         return transforms.Lambda(lambda image: rotate(image, th))
@@ -50,8 +60,8 @@ class Trans:
 
     in_gen = [torchvision.transforms.Resize((224, 224)), tsr, in_norm]
 
-    as_gen = [tsr, pil, tsr, cf_norm]
-    as_da = [tsr, pil, transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip(), transforms.RandomRotation(15), tsr, cf_norm]
+    as_gen = [tsr, scale_rgb, as_norm]
+    as_da = [tsr, scale_rgb, transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip(), transforms.RandomRotation(15), as_norm]
 
     # @classmethod
     # def compose(cls, transform_list):
