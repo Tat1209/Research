@@ -239,10 +239,13 @@ class Model(Trainer):
     def repr_loss_func(self):
         return repr(self.loss_func)
 
-    def repr_optimizer(self):
-        return repr(self.optimizer)
+    def repr_optimizer(self, use_break=False):
+        string = repr(self.optimizer)
+        if not use_break:
+            string.replace("\n", " ")
+        return string
 
-    def repr_scheduler(self):
+    def repr_scheduler(self, use_break=False):
         format_string = self.scheduler_t[0].__class__.__name__ + " (\n"
         for attr in dir(self.scheduler_t[0]):
             if not attr.startswith("_") and not callable(getattr(self.scheduler_t[0], attr)):  # exclude special attributes and methods
@@ -252,6 +255,9 @@ class Model(Trainer):
                     value = getattr(self.scheduler_t[0], attr)
                 format_string += f"{attr} = {value}\n"
         format_string += ")"
+
+        if not use_break:
+            format_string.replace("\n", " ")
         return format_string
 
     def repr_device(self):
@@ -474,6 +480,104 @@ class MultiTrain(Trainer):
 
                 total_losses = [a + b for a, b in zip(total_losses, losses_add)]
                 total_corrs = [a + b for a, b in zip(total_corrs, corrs_add)]
+
+        val_losses = [loss / (len(dl.dataset) * len(self.models)) for loss in total_losses]
+        val_accs = [acc / len(dl.dataset) for acc in total_corrs]
+
+        return val_losses, val_accs
+        # return list(zip(val_losses, val_accs))
+
+    def __getattr__(self, attr):
+        def wrapper(*args, **kwargs):
+            return_l = []
+            for i, model in enumerate(self.models):
+                # new_args = []
+                # for arg in args:
+                #     if isinstance(arg, list) and len(arg) == len(self.models):
+                #         new_arg = arg[i]
+                #     else:
+                #         new_arg = arg
+                #     new_args.append(new_arg)
+                new_args = [arg[i] if isinstance(arg, list) and len(arg) == len(self.models) else arg for arg in args]
+
+                # new_kwargs = dict()
+                # for k, v in kwargs.items():
+                #     if isinstance(v, list) and len(v) == len(self.models):
+                #         new_kwargs[k] = v[i]
+                #     else:
+                #         new_kwargs[k] = v
+                new_kwargs = {k: v[i] if isinstance(v, list) and len(v) == len(self.runs) else v for k, v in kwargs.items()}
+                return_l.append(getattr(model, attr)(*new_args, **new_kwargs))
+            return return_l
+
+        return wrapper
+
+
+class MyMultiTrain(Trainer):
+    def __init__(self, models=None, device=None):
+        self.models = models
+        super().__init__(device)
+
+    def train_1epoch(self, dl):
+        for model in self.models:
+            model.network.train()
+        total_losses = [0.0 for _ in self.models]
+        total_corrs = [0.0 for _ in self.models]
+
+        for inputs, labels in dl:
+            inputs = inputs.to(self.device)
+            labels = labels.to(self.device)
+
+            for i, model in enumerate(self.models):
+                output = model.network(inputs)
+                loss = model.loss_func(output, labels)
+
+                _, pred = torch.max(output.detach(), dim=1)
+                corr = torch.sum(pred == labels.data).item()
+
+                total_losses[i] += loss.item() * len(inputs)
+                total_corrs[i] += corr
+
+                model.optimizer.zero_grad()
+                loss.backward()
+                model.optimizer.step()
+
+            for model in self.models:
+                if model.scheduler_t is not None and model.scheduler_t[1] == "batch":
+                    model.scheduler_t[0].step()
+        for model in self.models:
+            if model.scheduler_t is not None and model.scheduler_t[1] == "epoch":
+                model.scheduler_t[0].step()
+
+        total_losses = [loss / (len(dl.dataset) * len(self.models)) for loss in total_losses]
+        total_accs = [corr / len(dl.dataset) for corr in total_corrs]
+
+        return total_losses, total_accs
+        # return list(zip(total_losses, total_accs))
+
+    def val_1epoch(self, dl):
+        if len(dl.dataset) == 0:
+            return None, None
+
+        for model in self.models:
+            model.network.eval()
+        total_losses = [0.0 for _ in self.models]
+        total_corrs = [0.0 for _ in self.models]
+
+        with torch.no_grad():
+            for inputs, labels in dl:
+                inputs = inputs.to(self.device)
+                labels = labels.to(self.device)
+
+                for i, model in enumerate(self.models):
+                    output = model.network(inputs)
+                    loss = model.loss_func(output, labels)
+
+                    _, pred = torch.max(output.detach(), dim=1)
+                    corr = torch.sum(pred == labels.data).item()
+
+                    total_losses[i] += loss.item() * len(inputs)
+                    total_corrs[i] += corr
 
         val_losses = [loss / (len(dl.dataset) * len(self.models)) for loss in total_losses]
         val_accs = [acc / len(dl.dataset) for acc in total_corrs]

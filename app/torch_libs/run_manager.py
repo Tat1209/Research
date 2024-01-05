@@ -59,7 +59,7 @@ class RunManager:
         torch.save(object, self.run_path / Path(fname))
 
     def log_param(self, name, value):
-        self.log_param({name: value})
+        self.log_params({name: value})
 
     # ひとつひとつかくより、self.run_path渡した方がいい?
     def log_df(self, df, fname):
@@ -123,6 +123,31 @@ class RunManager:
             if hasattr(self, "df_metrics"):
                 self.df_metrics.write_csv(self.run_path / Path("metrics.csv"))
             self._fetch_stats().write_csv(self.run_path / Path("stats.csv"))
+
+    def fetch_stats(self):
+        dir_names = list(self.exp_path.iterdir())
+        run_ids = [int(dir_name.name) for dir_name in dir_names]
+        stats_paths = [dir_name / Path("stats.csv") for dir_name in dir_names]
+
+        stats_l = []
+        for run_id, stats_path in zip(run_ids, stats_paths):
+            try:
+                df_stats = pl.read_csv(stats_path)
+                df_id = pl.DataFrame({"run_id": run_id})
+                df_stats_wid = df_id.hstack(df_stats)
+                stats_l.append(df_stats_wid)
+            except FileNotFoundError:
+                pass
+        df = pl.concat(stats_l, how="diagonal").sort(pl.col("run_id"))
+
+        return df
+
+    def write_stats(self, fname=None):
+        df = self.fetch_stats()
+        if fname is None:
+            df.write_csv(f"{self.exp_path}.csv")
+        else:
+            df.write_csv(str(self.pa_path / Path(fname)))
 
 
 class RunsManager:

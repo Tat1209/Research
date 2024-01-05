@@ -63,6 +63,5 @@ class Trans:
     as_gen = [tsr, scale_rgb, as_norm]
     as_da = [tsr, scale_rgb, transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip(), transforms.RandomRotation(15), as_norm]
 
-    # @classmethod
-    # def compose(cls, transform_list):
-    #     return transforms.Compose(transform_list)
+    as_da2 = [tsr, scale_rgb, transforms.RandomAffine(degrees=15, translate=(0.15, 0.15), scale=(0.85, 1.15), interpolation=InterpolationMode.BILINEAR), as_norm]
+    # as_da2 = [tsr, scale_rgb, transforms.ColorJitter(brightness=0.15, contrast=0.15), transforms.RandomAffine(degrees=15, translate=(0.15, 0.15), scale=(0.85, 1.15), interpolation=InterpolationMode.BILINEAR), as_norm]

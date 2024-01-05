@@ -8,7 +8,7 @@ sys.path.append(f"{work_path}app/torch_libs/")
 
 from datasets import Datasets, dl
 from run_manager import RunManager, RunsManager
-from trainer import Model, Ens, MultiTrain
+from trainer import Model, MultiTrain
 from trans import Trans
 import utils
 
@@ -25,7 +25,7 @@ from torchvision.models import efficientnet_v2_s as net
 
 model_arc = "efficientnet_v2_s"
 
-for lr in [0.00001, 0.00003, 0.0001, 0.0003, 0.01, 0.03, 0.1, 0.3, 1.0]:
+for lr in [0.0001, 0.0003, 0.01, 0.03, 0.1, 0.3, 1.0]:
     ds = Datasets(root=f"{work_path}assets/datasets/")
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -57,7 +57,8 @@ for lr in [0.00001, 0.00003, 0.0001, 0.0003, 0.01, 0.03, 0.1, 0.3, 1.0]:
     # network = net(num_classes=7)
     network = net(weights="IMAGENET1K_V1")
 
-    network.classifier[1] = torch.nn.Linear(1280, 7)
+    network.classifier = torch.nn.Linear(1280, 7)
+    # network.classifier[1] = torch.nn.Linear(1280, 7)
     for param in network.parameters():
         param.requires_grad = False
     for param in network.classifier[1].parameters():
