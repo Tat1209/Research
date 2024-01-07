@@ -107,7 +107,7 @@ class Model(Trainer):
         return train_loss, train_acc
 
     def val_1epoch(self, dl):
-        if len(dl) == 0:
+        if dl is None:
             return None, None
 
         self.network.eval()
@@ -163,7 +163,8 @@ class Model(Trainer):
     def get_sd(self):
         return self.network.state_dict()
 
-    def load_sd(self, sd):
+    def load_sd(self, sd_path):
+        sd = torch.load(sd_path)
         self.network.load_state_dict(sd)
 
     def get_lr(self):
@@ -242,7 +243,7 @@ class Model(Trainer):
     def repr_optimizer(self, use_break=False):
         string = repr(self.optimizer)
         if not use_break:
-            string.replace("\n", " ")
+            string = string.replace("\n", " ")
         return string
 
     def repr_scheduler(self, use_break=False):
@@ -257,7 +258,7 @@ class Model(Trainer):
         format_string += ")"
 
         if not use_break:
-            format_string.replace("\n", " ")
+            format_string = format_string.replace("\n", " ")
         return format_string
 
     def repr_device(self):
@@ -271,7 +272,7 @@ class Ens_1Loader(Trainer):
         super().__init__(device)
 
     def val_1epoch(self, dl):
-        if len(dl) == 0:
+        if dl is None:
             return None, None
 
         for model in self.models:
@@ -454,7 +455,7 @@ class MultiTrain(Trainer):
         # return list(zip(total_losses, total_accs))
 
     def val_1epoch(self, dl):
-        if len(dl.dataset) == 0:
+        if dl is None:
             return None, None
 
         for model in self.models:
@@ -556,7 +557,7 @@ class MyMultiTrain(Trainer):
         # return list(zip(total_losses, total_accs))
 
     def val_1epoch(self, dl):
-        if len(dl.dataset) == 0:
+        if dl is None:
             return None, None
 
         for model in self.models:

@@ -393,4 +393,6 @@ class DatasetHandler(Dataset):
 
 
 def dl(ds, batch_size, shuffle=True, num_workers=2, pin_memory=True, **kwargs):
+    if len(ds) == 0:
+        return None
     return DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=pin_memory, **kwargs)

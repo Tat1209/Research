@@ -9,7 +9,7 @@ import seaborn
 work_path = "/home/haselab/Documents/tat/Research/"
 sys.path.append(f"{work_path}app/torch_libs/")
 
-from trainer import Model, Ens, MultiTrain
+from trainer import Model, MultiTrain
 
 from sklearn.metrics import confusion_matrix, precision_score
 
@@ -79,8 +79,8 @@ class MyModel(Model):
         return train_loss, train_acc, train_f1
 
     def val_1epoch(self, dl):
-        if len(dl) == 0:
-            return None, None
+        if dl is None:
+            return None, None, None
 
         self.network.eval()
         total_loss = 0.0

@@ -85,7 +85,7 @@ class RunManager:
                     self.df_metrics = self._df_set_elem(self.df_metrics, name, "step", step, value)
                 else:
                     df_tmp = pl.DataFrame({"step": [step], name: [value]})
-                    self.df_metrics = pl.concat([self.df_metrics, df_tmp], how="diagonal")
+                    self.df_metrics = pl.concat([self.df_metrics, df_tmp], how="diagonal_relaxed")
         else:
             if step is None:
                 step = 1
@@ -94,10 +94,11 @@ class RunManager:
 
     def _df_set_elem(self, df, column, index_column, index, value):
         # indexは存在しなければならない。columnは存在しないとき新たに作られる。
-        if column in df.columns:
-            df = df.with_columns(pl.when(df[index_column] == index).then(value).otherwise(pl.col(column)).alias(column))
-        else:
-            df = df.with_columns(pl.when(df[index_column] == index).then(value).otherwise(pl.lit(None)).alias(column))
+        if value is not None:
+            if column in df.columns:
+                df = df.with_columns(pl.when(df[index_column] == index).then(value).otherwise(pl.col(column)).alias(column))
+            else:
+                df = df.with_columns(pl.when(df[index_column] == index).then(value).otherwise(pl.lit(None)).alias(column))
         return df
 
     def _fetch_stats(self):
@@ -138,7 +139,7 @@ class RunManager:
                 stats_l.append(df_stats_wid)
             except FileNotFoundError:
                 pass
-        df = pl.concat(stats_l, how="diagonal").sort(pl.col("run_id"))
+        df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("run_id"))
 
         return df
 
@@ -236,7 +237,7 @@ class RunViewer:
                 stats_l.append(df_stats_wid)
             except FileNotFoundError:
                 pass
-        df = pl.concat(stats_l, how="diagonal").sort(pl.col("run_id"))
+        df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("run_id"))
 
         return df
 
@@ -264,7 +265,7 @@ class RunViewer:
                 pass
         # df = pl.concat(stats_l, how="diagonal")
         # df = pl.concat(stats_l, how="diagonal").sort(pl.col("run_id"))
-        df = pl.concat(stats_l, how="diagonal").sort(pl.col("step")).sort(pl.col("run_id"))
+        df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("step")).sort(pl.col("run_id"))
 
         return df
 
