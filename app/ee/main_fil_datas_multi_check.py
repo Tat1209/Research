@@ -23,15 +23,16 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 for fi in [[2, 4, 8, 16, 32, 48, 64]]:
     # for fi in [[2, 4, 6, 8, 12, 16, 24, 32, 48, 64]]:
     # for fi in [[1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 64]]:
-    for di in [0.05, 0.03, 0.02, 0.015, 0.01, 0.0075, 0.005, 0.0025]:
-        # for di in [1.0, 0.75, 0.5, 0.3, 0.2, 0.15, 0.1, 0.075, 0.05, 0.03, 0.02, 0.015, 0.01, 0.0075, 0.005, 0.0025]:
+    for di in [0.02]:
         # exp_name = "exp_tmp"
-        exp_name = "exp_ens"
+        exp_name = "exp_same_epoch"
+        # exp_name = "exp_ens"
         runs = [RunManager(exc_path=__file__, exp_name=exp_name) for _ in fi]
         runs_mgr = RunsManager(runs)
 
         runs_mgr.log_param("max_lr", max_lr := 0.005)  # Adam
-        runs_mgr.log_param("epochs", epochs := int(100 / di))
+        runs_mgr.log_param("epochs", epochs := 100)
+        # runs_mgr.log_param("epochs", epochs := int(100 / di))
         runs_mgr.log_param("batch_size", batch_size := 125)
 
         runs_mgr.log_param("ensemble_type", ensemble_type := ["easy", "merge", "pure"][0])
