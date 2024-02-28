@@ -20,27 +20,31 @@ from mymodel import MyModel
 
 from torchvision.models import efficientnet_v2_s as net
 
-for lr in [0.0001]:
-    # for lr in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3]:
+from optim.lion import Lion
+
+for lr in [0.001]:
+    # for lr in [0.001, 0.001, 0.002, 0.002, 0.002, 0.002, 0.003, 0.003]:
+    print(f"{lr=}")
     ds = Datasets(root=f"{work_path}assets/datasets/")
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     # exp_name = "exp_tmp"
-    # exp_name = "exp_tl_test"
-    exp_name = "exp_tl"
-    # exp_name = "exp_submit"
+    exp_name = "exp_submit_single"
+    # exp_name = "exp_ft_test"
+    # exp_name = "exp_ft_gs"
 
     run_mgr = RunManager(exc_path=__file__, exp_name=exp_name)
 
     run_mgr.log_param("max_lr", max_lr := lr)
-    run_mgr.log_param("epochs", epochs := 500)
+    run_mgr.log_param("epochs", epochs := 1000)
     run_mgr.log_param("batch_size", batch_size := 128)
     run_mgr.log_param("mixup", mixup := True)
+    run_mgr.log_param("not_mixup", not_mixup := 0)
 
-    run_mgr.log_param("pretrained", pretrained := True)
-    run_mgr.log_param("transfer_learning", transfer_learning := True)
+    # run_mgr.log_param("pretrained", pretrained := True)
+    # run_mgr.log_param("transfer_learning", transfer_learning := True)
 
-    run_mgr.log_param("train_trans", repr(train_trans := Trans.as_gen))
+    run_mgr.log_param("train_trans", repr(train_trans := Trans.as_da3))
     run_mgr.log_param("val_trans", repr(val_trans := Trans.as_gen))
 
     train_ds, val_ds = ds("ai-step_l").split(ratio=1.0, shuffle=True)
@@ -55,41 +59,40 @@ for lr in [0.0001]:
     # val_ds = labeled_ds.in_range(val_range).transform(val_trans)
 
     unlabeled_ds = ds("ai-step_ul")
-    test_ds = unlabeled_ds.transform(val_trans)
+    test_ds = unlabeled_ds
 
     train_loader = dl(train_ds, batch_size, shuffle=True)
     val_loader = dl(val_ds, batch_size=2500, shuffle=True)
-    test_loader = dl(test_ds, batch_size=2500, shuffle=True)
+    # test_loader = dl(test_ds, batch_size=2500, shuffle=False)
+    test_loaders = [
+        dl(test_ds.transform(val_trans), batch_size=2500, shuffle=False),
+        dl(test_ds.transform(val_trans + [Trans.rotate90]), batch_size=2500, shuffle=False),
+        dl(test_ds.transform(val_trans + [Trans.rotate180]), batch_size=2500, shuffle=False),
+        dl(test_ds.transform(val_trans + [Trans.rotate270]), batch_size=2500, shuffle=False),
+        dl(test_ds.transform(val_trans + [Trans.hflip]), batch_size=2500, shuffle=False),
+        dl(test_ds.transform(val_trans + [Trans.rotate90, Trans.hflip]), batch_size=2500, shuffle=False),
+        dl(test_ds.transform(val_trans + [Trans.rotate180, Trans.hflip]), batch_size=2500, shuffle=False),
+        dl(test_ds.transform(val_trans + [Trans.rotate270, Trans.hflip]), batch_size=2500, shuffle=False),
+    ]
 
     run_mgr.log_param("num_data", len(train_loader.dataset))
     run_mgr.log_param("iters/epoch", iters_per_epoch := len(train_loader))
     run_mgr.log_param("dataset", train_loader.dataset.ds_str)
     run_mgr.log_param("model_arc", net.__module__)
 
-    if pretrained:
-        network = net(weights="IMAGENET1K_V1")
-        network.classifier[1] = torch.nn.Linear(1280, 7)
-        if transfer_learning:
-            for param in network.parameters():
-                param.requires_grad = False
-            for param in network.classifier.parameters():
-                param.requires_grad = True
-        else:
-            network = net(num_classes=7)
-
-    # network = net(num_classes=7)
+    network = net(num_classes=7)
     loss_func = torch.nn.CrossEntropyLoss(weight=train_ds.fetch_weight(base_classes=True).to(device))
-    optimizer = torch.optim.SGD(network.parameters(), lr=max_lr, momentum=0.9)
+    optimizer = torch.optim.Lion(network.parameters(), lr=max_lr, momentum=0.9, weight_decay=5e-4)
     # optimizer = torch.optim.SGD(network.parameters(), lr=max_lr, momentum=0.9, weight_decay=5e-4)
     # optimizer = torch.optim.AdamW(network.parameters(), lr=max_lr, weight_decay=1e-3)
     scheduler_t = (torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1), "epoch")
 
     model = MyModel(network, loss_func, optimizer, scheduler_t, device)
-    # run_mgr.log_param("start_weight", path := "/home/haselab/Documents/tat/Research/app/ai-step2/exp_tl/15/state_dict.pt")
-    # model.load_sd(path)
+    run_mgr.log_param("start_weight", path := "/home/haselab/Documents/tat/Research/app/ai-step2/exp_tl/1/state_dict.pt")
+    model.load_sd(path)
 
     run_mgr.log_param("params", model.count_params())
-    run_mgr.log_param("params_trainable", model.count_trinable_params())
+    run_mgr.log_param("params_trainable", model.count_trainable_params())
     hp_dict = {
         "loss_func": model.repr_loss_func(),
         "optimizer": model.repr_optimizer(),
@@ -102,10 +105,15 @@ for lr in [0.0001]:
     for e in range(epochs):
         run_mgr.log_metric("lr", model.get_lr(), step=e + 1)
 
-        train_loss, train_acc, train_f1 = model.train_1epoch(train_loader, mixup=mixup)
+        if (1 - not_mixup) * epochs > e:
+            train_loss, train_acc, train_f1 = model.train_1epoch(train_loader, mixup=mixup)
+            mixup_e = mixup
+        else:
+            train_loss, train_acc, train_f1 = model.train_1epoch(train_loader, mixup=False)
+            mixup_e = False
         val_loss, val_acc, val_f1 = model.val_1epoch(val_loader)
 
-        met_dict = {"epoch": e + 1, "train_loss": train_loss, "train_acc": train_acc, "train_f1": train_f1, "val_loss": val_loss, "val_acc": val_acc, "val_f1": val_f1}
+        met_dict = {"epoch": e + 1, "train_loss": train_loss, "train_acc": train_acc, "train_f1": train_f1, "val_loss": val_loss, "val_acc": val_acc, "val_f1": val_f1, "mixup_e": mixup_e}
 
         run_mgr.log_metrics(met_dict, step=e + 1)
         model.printlog(met_dict, e + 1, epochs, itv=epochs / 5)
@@ -113,9 +121,13 @@ for lr in [0.0001]:
 
     run_mgr.log_torch_save(model.get_sd(), "state_dict.pt")
 
-    outputs, labels = model.pred_1iter(test_loader)
+    outputs, labels = model.pred_tta(test_loaders)
+    # outputs, labels = model.pred_1iter(test_loader)
 
     df_out = pl.DataFrame({"fname": labels, "pred": outputs.tolist()})
     run_mgr.log_csv(df_out, "output.csv", has_header=False)
+
+    outputs, labels = model.pred_tta(test_loaders, categorize=False)
+    run_mgr.log_torch_save((outputs, labels), "output_t.pt")
 
     run_mgr.write_stats()

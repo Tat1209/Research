@@ -173,7 +173,7 @@ class Model(Trainer):
     def count_params(self):
         return sum(p.numel() for p in self.network.parameters())
 
-    def count_trinable_params(self):
+    def count_trainable_params(self):
         return sum(p.numel() for p in self.network.parameters() if p.requires_grad)
 
     def arc_check(
@@ -310,7 +310,7 @@ class Ens_1Loader(Trainer):
     def count_params(self):
         return sum(model.count_params() for model in self.models)
 
-    def count_trinable_params(self):
+    def count_trainable_params(self):
         return sum(model.count_trainable_params() for model in self.models)
 
 
@@ -470,10 +470,10 @@ class MultiTrain(Trainer):
 
                 outputs = [model.network(inputs) for model in self.models]
 
-                train_losses = [self.models[m].loss_func(outputs[m], labels) for m in range(len(self.models))]
+                losses = [self.models[m].loss_func(outputs[m], labels) for m in range(len(self.models))]
                 _, preds = zip(*[(torch.max(outputs.detach(), dim=1)) for outputs in outputs])
 
-                losses_add = [loss.item() * len(inputs) for loss in train_losses]
+                losses_add = [loss.item() * len(inputs) for loss in losses]
                 corrs_add = []
                 for pred in preds:
                     corr = torch.sum(pred == labels.data).item()
