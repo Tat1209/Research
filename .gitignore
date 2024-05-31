@@ -4,6 +4,8 @@ assets/datasets/
 mlruns/
 sakana/
 
+env/
+
 # *.csv
 *.zip
 *.pkl
