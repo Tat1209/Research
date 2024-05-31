@@ -4,12 +4,13 @@ assets/datasets/
 mlruns/
 sakana/
 
-*.csv
+# *.csv
 *.zip
 *.pkl
 *.pt
 
-exp_*/
+*/ee/exp_*/
+*/*/exp_*/runs/
 
 *.ckpt
 *.sqlite3
