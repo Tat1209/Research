@@ -6,7 +6,7 @@ work_path = "/home/haselab/Documents/tat/Research/"
 sys.path.append(f"{work_path}app/torch_libs/")
 
 from datasets import Datasets, dl
-from run_manager import RunManager, RunsManager, RunViewer
+from run_manager_old import RunManager, RunsManager, RunViewer
 from trainer import Model, MyMultiTrain
 from trans import Trans
 import utils
@@ -20,14 +20,19 @@ ds = Datasets(root=f"{work_path}assets/datasets/")
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
-for fi in [[1, 2, 3, 3, 4]]:
+for fi in [[2, 4, 8, 16, 32, 48, 64]]:
+    # for fi in [[2, 4, 6, 8, 12, 16, 24, 32, 48, 64]]:
+    # for fi in [[1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 64]]:
     for di in [0.02]:
-        exp_name = "exp_tmp"
+        # exp_name = "exp_tmp"
+        exp_name = "exp_same_epoch"
+        # exp_name = "exp_ens"
         runs = [RunManager(exc_path=__file__, exp_name=exp_name) for _ in fi]
         runs_mgr = RunsManager(runs)
 
         runs_mgr.log_param("max_lr", max_lr := 0.005)  # Adam
-        runs_mgr.log_param("epochs", epochs := 5)
+        runs_mgr.log_param("epochs", epochs := 100)
+        # runs_mgr.log_param("epochs", epochs := int(100 / di))
         runs_mgr.log_param("batch_size", batch_size := 125)
 
         runs_mgr.log_param("ensemble_type", ensemble_type := ["easy", "merge", "pure"][0])
@@ -45,7 +50,7 @@ for fi in [[1, 2, 3, 3, 4]]:
         models = []
         for i, fils in enumerate(fi):
             runs_mgr[i].log_param("fils", fils)
-            runs_mgr[i].log_param("ensembles", ensembles := 4)
+            runs_mgr[i].log_param("ensembles", ensembles := min(int((64 / fils) ** 2), 2048))
             network = net(num_classes=10, nb_fils=fils, ee_groups=ensembles)
             loss_func = torch.nn.CrossEntropyLoss()
             optimizer = torch.optim.Adam(network.parameters(), lr=max_lr)

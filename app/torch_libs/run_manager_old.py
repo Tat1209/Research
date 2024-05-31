@@ -6,56 +6,46 @@ import polars as pl
 
 
 class RunManager:
-    def __init__(self, pa_path=None, exc_path=None, exp_name="exp_default", exp_path=None):
-        """
-        ex.)
-            run = RunManager(exc_path=__file__, exp_name="exp_nyancat")
-        """
-
-        # pa_pathとexp_nameを指定 -> 格納ディレクトリとexp_nameを別々に指定
+    def __init__(self, pa_path=None, exc_path=None, exp_path=None, exp_name="tmp", run_id=None):
+        # run = RunManager(exc_path=__file__, exp_name="sugoi_research")
         if pa_path is not None:
             pa_path = Path(pa_path).resolve()
             exp_path = pa_path / Path(exp_name)
-
-        # exc_path(__file__)とexp_nameを指定 -> コード実行ディレクトリと同じディレクトリに結果を格納
         elif exc_path is not None:
             pa_path = Path(exc_path).resolve().parent  # 常に__file__が送られてくるならresolveは不要
             exp_path = pa_path / Path(exp_name)
-
-        # exp_pathを指定 -> 格納ディレクトリとexp_nameを同時に指定
         else:
             exp_path = Path(exp_path).resolve()
             pa_path = exp_path.parent
 
-        # 結果格納用のパスを設定し、適宜ディレクトリを作成
-        exp_path.mkdir(parents=True, exist_ok=True)
-
-        runs_path = exp_path / Path("runs")
-        runs_path.mkdir(parents=True, exist_ok=True)
-
-        run_id = Path(self._get_run_id(runs_path))
-        run_path = runs_path / run_id
+        if run_id is None:
+            exp_path.mkdir(parents=True, exist_ok=True)
+            run_id = Path(self._get_run_id(exp_path))
+        run_path = exp_path / run_id
         run_path.mkdir(parents=True, exist_ok=True)
 
         self.pa_path = pa_path
         self.exp_path = exp_path
-        self.runs_path = runs_path
         self.run_path = run_path
         # self.run_id = run_id
 
-        # self.start_time = time()
+        self.start_time = time()
 
-    # def __call__(self, fname):
-    #     return self.run_path / Path(fname)
+    def __call__(self, fname):
+        return self.run_path / Path(fname)
 
-    def _get_run_id(self, runs_path):
-        dir_names = list(runs_path.iterdir())
+    def _get_run_id(self, exp_path):
+        dir_names = list(exp_path.iterdir())
         dir_nums = [int(dir_name.name) for dir_name in dir_names]
         if len(dir_nums) == 0:
             run_id = 0
         else:
             run_id = max(dir_nums) + 1
         return str(run_id)
+
+    # def set_experiment(self, exp_name):
+    #     self.exp_path = self.pa_path / Path(exp_name)
+    #     self.run_path = self.exp_path / Path(self._get_run_id(self.exp_path))
 
     def log_text(self, text, fname):
         with open(self.run_path / Path(str(fname)), "w") as fh:
@@ -71,6 +61,7 @@ class RunManager:
     def log_param(self, name, value):
         self.log_params({name: value})
 
+    # ひとつひとつかくより、self.run_path渡した方がいい?
     def log_df(self, df, fname):
         df.write_csv(self.run_path / Path(fname))
         # df.write_csv(self(fname))
@@ -101,13 +92,13 @@ class RunManager:
             stored_dict = {k: [v] for k, v in stored_dict.items()}
             self.df_metrics = pl.DataFrame({"step": [step], **stored_dict})
 
-    def _df_set_elem(self, df, column, index_column_name, index, value):
+    def _df_set_elem(self, df, column, index_column, index, value):
         # indexは存在しなければならない。columnは存在しないとき新たに作られる。
         if value is not None:
             if column in df.columns:
-                df = df.with_columns(pl.when(df[index_column_name] == index).then(value).otherwise(pl.col(column)).alias(column))
+                df = df.with_columns(pl.when(df[index_column] == index).then(value).otherwise(pl.col(column)).alias(column))
             else:
-                df = df.with_columns(pl.when(df[index_column_name] == index).then(value).otherwise(pl.lit(None)).alias(column))
+                df = df.with_columns(pl.when(df[index_column] == index).then(value).otherwise(pl.lit(None)).alias(column))
         return df
 
     def _fetch_stats(self):
@@ -134,35 +125,30 @@ class RunManager:
                 self.df_metrics.write_csv(self.run_path / Path("metrics.csv"))
             self._fetch_stats().write_csv(self.run_path / Path("stats.csv"))
 
-    # def fetch_stats(self):
-    #     dir_names = list(self.exp_path.iterdir())
-    #     run_ids = [int(dir_name.name) for dir_name in dir_names]
-    #     stats_paths = [dir_name / Path("stats.csv") for dir_name in dir_names]
+    def fetch_stats(self):
+        dir_names = list(self.exp_path.iterdir())
+        run_ids = [int(dir_name.name) for dir_name in dir_names]
+        stats_paths = [dir_name / Path("stats.csv") for dir_name in dir_names]
 
-    #     stats_l = []
-    #     for run_id, stats_path in zip(run_ids, stats_paths):
-    #         try:
-    #             df_stats = pl.read_csv(stats_path)
-    #             df_id = pl.DataFrame({"run_id": run_id})
-    #             df_stats_wid = df_id.hstack(df_stats)
-    #             stats_l.append(df_stats_wid)
-    #         except FileNotFoundError:
-    #             pass
-    #     df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("run_id"))
+        stats_l = []
+        for run_id, stats_path in zip(run_ids, stats_paths):
+            try:
+                df_stats = pl.read_csv(stats_path)
+                df_id = pl.DataFrame({"run_id": run_id})
+                df_stats_wid = df_id.hstack(df_stats)
+                stats_l.append(df_stats_wid)
+            except FileNotFoundError:
+                pass
+        df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("run_id"))
 
-    #     return df
+        return df
 
-    # def write_stats(self, fname=None):
-    #     df = self.fetch_stats()
-    #     if fname is None:
-    #         df.write_csv(f"{self.exp_path}.csv")
-    #     else:
-    #         df.write_csv(str(self.pa_path / Path(fname)))
-
-    # exp_のフォルダに直接格納する場合
-    # def write_stats(self, fname="results.csv"):
-    #     df = self.fetch_stats()
-    #     df.write_csv(str(self.exp_path / Path(fname)))
+    def write_stats(self, fname=None):
+        df = self.fetch_stats()
+        if fname is None:
+            df.write_csv(f"{self.exp_path}.csv")
+        else:
+            df.write_csv(str(self.pa_path / Path(fname)))
 
 
 class RunsManager:
@@ -222,30 +208,23 @@ class RunsManager:
 
 
 class RunViewer:
-    def __init__(self, pa_path=None, exc_path=None, exp_name="exp_default", exp_path=None):
-        # pa_pathとexp_nameを指定 -> 格納ディレクトリとexp_nameを別々に指定
+    def __init__(self, pa_path=None, exc_path=None, exp_path=None, exp_name="tmp"):
+        # run = RunManager(exc_path=__file__, exp_name="sugoi_research")
         if pa_path is not None:
             pa_path = Path(pa_path).resolve()
             exp_path = pa_path / Path(exp_name)
-
-        # exc_path(__file__)とexp_nameを指定 -> コード実行ディレクトリと同じディレクトリに結果を格納
         elif exc_path is not None:
             pa_path = Path(exc_path).resolve().parent  # 常に__file__が送られてくるならresolveは不要
             exp_path = pa_path / Path(exp_name)
-
-        # exp_pathを指定 -> 格納ディレクトリとexp_nameを同時に指定
         else:
             exp_path = Path(exp_path).resolve()
             pa_path = exp_path.parent
 
-        runs_path = exp_path / Path("runs")
-
         self.pa_path = pa_path
         self.exp_path = exp_path
-        self.runs_path = runs_path
 
     def fetch_stats(self):
-        dir_names = list(self.runs_path.iterdir())
+        dir_names = list(self.exp_path.iterdir())
         run_ids = [int(dir_name.name) for dir_name in dir_names]
         stats_paths = [dir_name / Path("stats.csv") for dir_name in dir_names]
 
@@ -262,19 +241,15 @@ class RunViewer:
 
         return df
 
-    # def write_stats(self, fname=None):
-    #     df = self.fetch_stats()
-    #     if fname is None:
-    #         df.write_csv(f"{self.exp_path}.csv")
-    #     else:
-    #         df.write_csv(str(self.pa_path / Path(fname)))
-
-    def write_stats(self, fname="results.csv"):
+    def write_stats(self, fname=None):
         df = self.fetch_stats()
-        df.write_csv(str(self.exp_path / Path(fname)))
+        if fname is None:
+            df.write_csv(f"{self.exp_path}.csv")
+        else:
+            df.write_csv(str(self.pa_path / Path(fname)))
 
     def fetch_metrics(self):
-        dir_names = list(self.runs_path.iterdir())
+        dir_names = list(self.exp_path.iterdir())
         run_ids = [int(dir_name.name) for dir_name in dir_names]
         stats_paths = [dir_name / Path("metrics.csv") for dir_name in dir_names]
 
@@ -295,7 +270,7 @@ class RunViewer:
         return df
 
     def fetch_metrics_l(self):
-        dir_names = list(self.runs_path.iterdir())
+        dir_names = list(self.exp_path.iterdir())
         run_ids = [int(dir_name.name) for dir_name in dir_names]
         stats_paths = [dir_name / Path("metrics.csv") for dir_name in dir_names]
 

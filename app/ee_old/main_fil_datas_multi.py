@@ -6,7 +6,7 @@ work_path = "/home/haselab/Documents/tat/Research/"
 sys.path.append(f"{work_path}app/torch_libs/")
 
 from datasets import Datasets, dl
-from run_manager import RunManager, RunsManager
+from run_manager_old import RunManager, RunsManager
 from trainer import Model, Ens, EEModel, MultiTrain
 from trans import Trans
 import utils
