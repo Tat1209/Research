@@ -355,7 +355,8 @@ class DatasetHandler(Dataset):
 
     def fetch_base_ld(self):
         try:
-            label_l, label_d = torch.load(f"{self.dataset.access.root}{self.ds_str}.ld")
+            ld_path = self.dataset.access.root / (self.ds_str + ".ld")
+            label_l, label_d = torch.load(ld_path)
         except FileNotFoundError:
             label_l, label_d = self._save_labels()
 
@@ -367,9 +368,9 @@ class DatasetHandler(Dataset):
         label_l, label_d = base_dsh._make_ld()
 
         save_obj = (label_l, label_d)
-        save_path = self.dataset.access.root + self.ds_str + ".ld"
-        torch.save(save_obj, save_path)
-        print(f"Saved label data to the following path: {save_path}")
+        ld_path = self.dataset.access.root / (self.ds_str + ".ld")
+        torch.save(save_obj, ld_path)
+        print(f"Saved label data to the following path: {ld_path}")
 
         return label_l, label_d
 

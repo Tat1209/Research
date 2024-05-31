@@ -18,14 +18,13 @@ import utils
 # from torchvision.models import resnet18 as net
 from models.gitresnet_ee import resnet18 as net
 
-
-ds = Datasets(root=f"{work_path}assets/datasets/")
+ds = Datasets(root=work_path / "assets/datasets/")
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 exp_name = f"exp_cifar100"
 for base_fi in [32, 16, 8, 4, 2]:
     for fi in [[2 ** i for i in range(int(math.log2(base_fi)) + 1)]]:
-        for di in [0.2, 0.15, 0.1, 0.08, 0.06, 0.04, 0.02]:
+        for di in [0.2, 0.15, 0.1, 0.08, 0.06, 0.04, 0.02, 0.01]:
             runs = [RunManager(exc_path=__file__, exp_name=exp_name) for _ in fi]
             runs_mgr = RunsManager(runs)
 
@@ -37,8 +36,8 @@ for base_fi in [32, 16, 8, 4, 2]:
             runs_mgr.log_param("train_trans", repr(train_trans := Trans.cf_git))
             runs_mgr.log_param("val_trans", repr(val_trans := Trans.cf_gen))
 
-            train_loader = dl(ds("cifar10_train", train_trans).balance_label().in_range(di), batch_size, shuffle=True)
-            val_loader = dl(ds("cifar10_val", val_trans), batch_size, shuffle=True)
+            train_loader = dl(ds("cifar100_train", train_trans).balance_label().in_range(di), batch_size, shuffle=True)
+            val_loader = dl(ds("cifar100_val", val_trans), batch_size, shuffle=True)
 
             runs_mgr.log_param("num_data", len(train_loader.dataset))
             runs_mgr.log_param("iters/epoch", iters_per_epoch := len(train_loader))
@@ -50,7 +49,7 @@ for base_fi in [32, 16, 8, 4, 2]:
                 runs_mgr[i].log_param("fils", fils)
                 # runs_mgr[i].log_param("ensembles", ensembles := int((base_fi / fils) ** 2))
                 runs_mgr[i].log_param("ensembles", ensembles := min(int((base_fi / fils) ** 2), 2048))
-                network = net(num_classes=10, nb_fils=fils, ee_groups=ensembles)
+                network = net(num_classes=100, nb_fils=fils, ee_groups=ensembles)
                 loss_func = torch.nn.CrossEntropyLoss()
                 optimizer = torch.optim.Adam(network.parameters(), lr=max_lr)
                 scheduler_t = (torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1), "epoch")

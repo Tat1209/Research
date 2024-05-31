@@ -19,7 +19,7 @@ import utils
 from models.gitresnet_ee import resnet18 as net
 
 
-ds = Datasets(root=f"{work_path}assets/datasets/")
+ds = Datasets(root=work_path / "assets/datasets/")
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
