@@ -1,0 +1,5 @@
+f = open("test.txt",'w') 
+f.write("Hello!\n") 
+f.write("This is a test program.\n") 
+f.write("end_of_file\n") 
+f.close()

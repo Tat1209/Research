@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
+r"""
 fracex.py
 Demo for the fractions module
 Usage　c:\>python fracex.py
