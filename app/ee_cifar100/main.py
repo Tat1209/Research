@@ -9,7 +9,7 @@ torchlib_path = str(work_path / Path("app/torch_libs"))
 sys.path.append(torchlib_path)
 
 from datasets import Datasets, dl
-from run_manager_new import RunManager, RunsManager, RunViewer
+from run_manager import RunManager, RunsManager, RunViewer
 from trainer import Model, MyMultiTrain
 from trans import Trans
 import utils
@@ -22,14 +22,10 @@ from models.gitresnet_ee import resnet18 as net
 ds = Datasets(root=f"{work_path}assets/datasets/")
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-
-for base_fi in [64]:
-# for base_fi in [32, 16, 8, 4, 2]:
-    # for fi in [[base_fi]]:
+exp_name = f"exp_cifar100"
+for base_fi in [32, 16, 8, 4, 2]:
     for fi in [[2 ** i for i in range(int(math.log2(base_fi)) + 1)]]:
         for di in [0.2, 0.15, 0.1, 0.08, 0.06, 0.04, 0.02]:
-            exp_name = f"exp2_{base_fi}"
-            # exp_name = f"exp_{base_fi}"
             runs = [RunManager(exc_path=__file__, exp_name=exp_name) for _ in fi]
             runs_mgr = RunsManager(runs)
 
@@ -69,6 +65,7 @@ for base_fi in [64]:
                 "optimizer": mmodel.repr_optimizer(),
                 "scheduler": mmodel.repr_scheduler(),
             }
+
             runs_mgr.log_params(hp_dict)
             runs_mgr.log_text(mmodel.repr_network(), "model_layers.txt")
             runs_mgr.log_text(mmodel.arc_check(dl=train_loader), "model_structure.txt")

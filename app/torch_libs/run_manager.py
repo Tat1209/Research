@@ -244,21 +244,24 @@ class RunViewer:
         self.exp_path = exp_path
         self.runs_path = runs_path
 
-    def fetch_stats(self):
-        dir_names = list(self.runs_path.iterdir())
-        run_ids = [int(dir_name.name) for dir_name in dir_names]
-        stats_paths = [dir_name / Path("stats.csv") for dir_name in dir_names]
+    def fetch_stats(self, fname="results.csv"):
+        try:
+            dir_names = list(self.runs_path.iterdir())
+            run_ids = [int(dir_name.name) for dir_name in dir_names]
+            stats_paths = [dir_name / Path("stats.csv") for dir_name in dir_names]
 
-        stats_l = []
-        for run_id, stats_path in zip(run_ids, stats_paths):
-            try:
-                df_stats = pl.read_csv(stats_path)
-                df_id = pl.DataFrame({"run_id": run_id})
-                df_stats_wid = df_id.hstack(df_stats)
-                stats_l.append(df_stats_wid)
-            except FileNotFoundError:
-                pass
-        df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("run_id"))
+            stats_l = []
+            for run_id, stats_path in zip(run_ids, stats_paths):
+                try:
+                    df_stats = pl.read_csv(stats_path)
+                    df_id = pl.DataFrame({"run_id": run_id})
+                    df_stats_wid = df_id.hstack(df_stats)
+                    stats_l.append(df_stats_wid)
+                except FileNotFoundError:
+                    pass
+            df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("run_id"))
+        except FileNotFoundError:
+            df = pl.read_csv(str(self.exp_path / Path(fname)), infer_schema_length=100)
 
         return df
 

@@ -9,7 +9,7 @@ torchlib_path = str(work_path / Path("app/torch_libs"))
 sys.path.append(torchlib_path)
 
 from datasets import Datasets, dl
-from run_manager_new import RunManager, RunsManager, RunViewer
+from run_manager import RunManager, RunsManager, RunViewer
 from trainer import Model, MyMultiTrain
 from trans import Trans
 import utils
