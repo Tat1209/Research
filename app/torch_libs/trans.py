@@ -25,6 +25,7 @@ class Trans:
         std=[0.08373230695724487, 0.07494986057281494, 0.06476051360368729],
         inplace=True,
     )
+    stl_norm = transforms.Normalize(mean=[0.44671064615249634, 0.4398098886013031, 0.4066464304924011], std=[0.26034098863601685, 0.2565772831439972, 0.2712673842906952], inplace=True)
 
     np_trance = transforms.Lambda(lambda x: -x)
     color = transforms.Lambda(lambda image: image.convert("RGB"))
@@ -57,6 +58,9 @@ class Trans:
     cf_gen = [tsr, cf_norm]
     cf_crop = [transforms.RandomCrop(32, padding=4, padding_mode="reflect"), transforms.RandomHorizontalFlip(), tsr, cf_norm]
     cf_git = [transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip(), transforms.RandomRotation(15), tsr, cf_norm]
+
+    stl_gen_32 = [resize(32, 32), tsr, stl_norm]
+    stl_git_32 = [resize(32, 32), transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip(), transforms.RandomRotation(15), tsr, stl_norm]
 
     in_gen = [torchvision.transforms.Resize((224, 224)), tsr, in_norm]
 

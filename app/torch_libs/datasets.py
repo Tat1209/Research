@@ -67,6 +67,8 @@ class Datasets:
                 return torchvision.datasets.CIFAR10(root=self.root, train=False)
             case "stl10_train":
                 return torchvision.datasets.STL10(root=self.root, split="train")
+            case "stl10_test":
+                return torchvision.datasets.STL10(root=self.root, split="test")
             case "caltech":
                 return torchvision.datasets.Caltech101(root=self.root, target_type="category")
             case "imagenet":
@@ -391,6 +393,29 @@ class DatasetHandler(Dataset):
         label_d = dict(sorted(label_d.items()))
 
         return label_l, label_d
+
+    def calc_mean_std(self, batch_size=256, formatted=False):
+        elem = None
+        for input, _ in dl(self, batch_size, shuffle=False):
+            # p は、バッチの次元を除いたものが2次元データなら(1, 0, 2, 3)、1次元データなら(1, 0, 2)
+            p = torch.arange(len(input.shape))
+            p[0], p[1] = 1, 0
+            p = tuple(p)
+
+            elem_b = input.permute(p).reshape(input.shape[1], -1)
+            if elem is None:
+                elem = elem_b
+            else:
+                elem = torch.cat([elem, elem_b], dim=1)
+
+        mean = elem.mean(dim=1).tolist()
+        std = elem.std(dim=1).tolist()
+
+        if formatted:
+            return f"transforms.Normalize(mean={mean}, std={std}, inplace=True)"
+        else:
+            return {"mean": mean, "std": std}
+
 
 
 def dl(ds, batch_size, shuffle=True, num_workers=2, pin_memory=True, **kwargs):
