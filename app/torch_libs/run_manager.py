@@ -243,61 +243,44 @@ class RunViewer:
         self.pa_path = pa_path
         self.exp_path = exp_path
         self.runs_path = runs_path
+        
+    def ref_results(self, fname):
+        dir_names = list(self.runs_path.iterdir())
+        run_ids = [int(dir_name.name) for dir_name in dir_names]
+        stats_paths = [dir_name / Path("stats.csv") for dir_name in dir_names]
 
-    def fetch_stats(self, fname="results.csv"):
-        try:
-            dir_names = list(self.runs_path.iterdir())
-            run_ids = [int(dir_name.name) for dir_name in dir_names]
-            stats_paths = [dir_name / Path("stats.csv") for dir_name in dir_names]
+        stats_l = []
+        for run_id, stats_path in zip(run_ids, stats_paths):
+            try:
+                df_stats = pl.read_csv(stats_path)
+                df_id = pl.DataFrame({"run_id": run_id})
+                df_stats_wid = df_id.hstack(df_stats)
+                stats_l.append(df_stats_wid)
+            except FileNotFoundError:
+                pass
+        df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("run_id"))
+        self.write_results(df, fname)
 
-            stats_l = []
-            for run_id, stats_path in zip(run_ids, stats_paths):
-                try:
-                    df_stats = pl.read_csv(stats_path)
-                    df_id = pl.DataFrame({"run_id": run_id})
-                    df_stats_wid = df_id.hstack(df_stats)
-                    stats_l.append(df_stats_wid)
-                except FileNotFoundError:
-                    pass
-            df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("run_id"))
-        except FileNotFoundError:
-            df = pl.read_csv(str(self.exp_path / Path(fname)), infer_schema_length=100)
+        return df
+    
+    def read_results(self, fname="results.csv", infer_schema_length=100):
+        df = pl.read_csv(str(self.exp_path / Path(fname)), infer_schema_length=infer_schema_length)
 
         return df
 
-    # def write_stats(self, fname=None):
-    #     df = self.fetch_stats()
-    #     if fname is None:
-    #         df.write_csv(f"{self.exp_path}.csv")
-    #     else:
-    #         df.write_csv(str(self.pa_path / Path(fname)))
-
-    def write_stats(self, fname="results.csv"):
-        df = self.fetch_stats()
+    def write_results(self, df, fname="results.csv"):
         df.write_csv(str(self.exp_path / Path(fname)))
 
-    def fetch_metrics(self):
-        dir_names = list(self.runs_path.iterdir())
-        run_ids = [int(dir_name.name) for dir_name in dir_names]
-        stats_paths = [dir_name / Path("metrics.csv") for dir_name in dir_names]
-
-        stats_l = []
-        for run_id, stats_path in zip(run_ids, stats_paths):
-            try:
-                df_stats = pl.read_csv(stats_path)
-                df_stats_wid = df_stats.with_columns(pl.lit(run_id).alias("run_id"))
-                df_stats_wid = df_stats_wid.select(["run_id"] + df_stats.columns)
-                stats_l.append(df_stats_wid)
-            except FileNotFoundError:
-                # metrics.csvがない場合Errorが発生する。
-                pass
-        # df = pl.concat(stats_l, how="diagonal")
-        # df = pl.concat(stats_l, how="diagonal").sort(pl.col("run_id"))
-        df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("step")).sort(pl.col("run_id"))
+    def fetch_results(self, fname="results.csv"):
+        try:
+            df = self.ref_results(fname)
+        except FileNotFoundError:
+            df = self.read_results(fname)
 
         return df
 
-    def fetch_metrics_l(self):
+
+    def fetch_metrics(self, listed=False):
         dir_names = list(self.runs_path.iterdir())
         run_ids = [int(dir_name.name) for dir_name in dir_names]
         stats_paths = [dir_name / Path("metrics.csv") for dir_name in dir_names]
@@ -312,6 +295,8 @@ class RunViewer:
             except FileNotFoundError:
                 # metrics.csvがない場合Errorが発生する。
                 pass
-        # df = pl.concat(stats_l, how="diagonal").sort(pl.col("step"))
-
-        return stats_l
+        if listed:
+            return stats_l
+        else:
+            df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("step")).sort(pl.col("run_id"))
+            return df
