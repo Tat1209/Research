@@ -61,6 +61,8 @@ class Trans:
 
     stl_gen_32 = [resize(32, 32), tsr, stl_norm]
     stl_git_32 = [resize(32, 32), transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip(), transforms.RandomRotation(15), tsr, stl_norm]
+    stl_gen_64 = [resize(64, 64), tsr, stl_norm]
+    stl_git_64 = [resize(64, 64), transforms.RandomCrop(64, padding=4), transforms.RandomHorizontalFlip(), transforms.RandomRotation(15), tsr, stl_norm]
 
     in_gen = [torchvision.transforms.Resize((224, 224)), tsr, in_norm]
 
