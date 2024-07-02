@@ -2,9 +2,8 @@ __pycache__/
 
 assets/datasets/
 mlruns/
-sakana/
 
-env/
+env*/
 
 # *.csv
 *.zip
