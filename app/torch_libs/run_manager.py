@@ -244,10 +244,8 @@ class RunViewer:
         self.exp_path = exp_path
         self.runs_path = runs_path
         
-    def ref_results(self, fname):
-        dir_names = list(self.runs_path.iterdir())
-        run_ids = [int(dir_name.name) for dir_name in dir_names]
-        stats_paths = [dir_name / Path("stats.csv") for dir_name in dir_names]
+    def ref_results(self, fname="results.csv"):
+        run_ids, stats_paths = self.fetch_statsfiles("stats.csv")
 
         stats_l = []
         for run_id, stats_path in zip(run_ids, stats_paths):
@@ -281,9 +279,7 @@ class RunViewer:
 
 
     def fetch_metrics(self, listed=False):
-        dir_names = list(self.runs_path.iterdir())
-        run_ids = [int(dir_name.name) for dir_name in dir_names]
-        stats_paths = [dir_name / Path("metrics.csv") for dir_name in dir_names]
+        run_ids, stats_paths = self.fetch_statsfiles("metrics.csv")
 
         stats_l = []
         for run_id, stats_path in zip(run_ids, stats_paths):
@@ -300,3 +296,11 @@ class RunViewer:
         else:
             df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("step")).sort(pl.col("run_id"))
             return df
+        
+    def fetch_statsfiles(self, fname):
+        dir_names = list(self.runs_path.iterdir())
+        run_ids = [int(dir_name.name) for dir_name in dir_names]
+        stats_paths = [dir_name / Path(fname) for dir_name in dir_names]
+        
+        return run_ids, stats_paths
+        

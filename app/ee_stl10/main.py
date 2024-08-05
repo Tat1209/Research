@@ -21,7 +21,8 @@ from models.gitresnet_ee import resnet18 as net
 ds = Datasets(root=work_path / "assets/datasets/")
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-exp_name = f"exp_stl10"
+exp_name = f"exp_tmp"
+# exp_name = f"exp_stl10"
 for base_fi in [32, 16, 8, 4, 2]:
     for fi in [[2 ** i for i in range(int(math.log2(base_fi)) + 1)]]:
         for di in [0.1, 0.08, 0.06, 0.04, 0.02, 0.01]:

@@ -13,7 +13,7 @@ class Trans:
     pil = transforms.ToPILImage()
     scale_rgb = transforms.Lambda(lambda image: image / 255.0)
     permute = transforms.Lambda(lambda tsr: tsr.permute(2, 0, 1))
-
+    
     cf_norm = transforms.Normalize(
         mean=[0.5070751592371323, 0.48654887331495095, 0.4409178433670343],
         std=[0.2673342858792401, 0.2564384629170883, 0.27615047132568404],
@@ -29,11 +29,15 @@ class Trans:
 
     np_trance = transforms.Lambda(lambda x: -x)
     color = transforms.Lambda(lambda image: image.convert("RGB"))
+    mono = transforms.Grayscale(num_output_channels=1)
     rotate90 = transforms.Lambda(lambda image: rotate(image, 90))
     rotate180 = transforms.Lambda(lambda image: rotate(image, 180))
     rotate270 = transforms.Lambda(lambda image: rotate(image, 270))
     hflip = transforms.RandomHorizontalFlip(p=1)
     vflip = transforms.RandomVerticalFlip(p=1)
+
+    def norm(mean, std):
+        transforms.Normalize(mean=mean, std=std, inplace=True)
 
     def cf_raug(**kwargs):
         torchvision.transforms.RandAugment(**kwargs)
@@ -63,6 +67,7 @@ class Trans:
     stl_git_32 = [resize(32, 32), transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip(), transforms.RandomRotation(15), tsr, stl_norm]
     stl_gen_64 = [resize(64, 64), tsr, stl_norm]
     stl_git_64 = [resize(64, 64), transforms.RandomCrop(64, padding=4), transforms.RandomHorizontalFlip(), transforms.RandomRotation(15), tsr, stl_norm]
+    
 
     in_gen = [torchvision.transforms.Resize((224, 224)), tsr, in_norm]
 
