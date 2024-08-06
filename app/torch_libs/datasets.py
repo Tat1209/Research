@@ -136,14 +136,28 @@ class Datasets:
                 return torchvision.datasets.CIFAR10(root=self.root, train=False)
             case "stl10_train":
                 return torchvision.datasets.STL10(root=self.root, split="train")
-            case "stl10_test":
+            case "stl10_val":
                 return torchvision.datasets.STL10(root=self.root, split="test")
-            case "caltech":
+            case "caltech101_trainval":
                 return torchvision.datasets.Caltech101(root=self.root, target_type="category")
             case "tiny-imagenet_train":
                 return TinyImageNet(root=self.root, train=True)
             case "tiny-imagenet_val":
                 return TinyImageNet(root=self.root, train=False)
+            case "cars_train":
+                return torchvision.datasets.StanfordCars(root=self.root, split="train")
+            case "cars_val":
+                return torchvision.datasets.StanfordCars(root=self.root, split="test")
+            case "pets_train":
+                return torchvision.datasets.OxfordIIITPet(root=self.root, split="trainval", target_types="category")
+            case "pets_val":
+                return torchvision.datasets.OxfordIIITPet(root=self.root, split="test", target_types="category")
+            case "flowers_train":
+                return torchvision.datasets.Flowers102(root=self.root, split="train")
+            case "flowers_val":
+                return torchvision.datasets.Flowers102(root=self.root, split="val")
+            case "flowers_test":
+                return torchvision.datasets.Flowers102(root=self.root, split="test")
             case "imagenet":
                 return torchvision.datasets.ImageNet(root=self.root, split="val")
             case "mnist_ddim":
@@ -196,6 +210,7 @@ class DatasetHandler(Dataset):
         return len(self.indices)
 
     def shuffle(self, seed=None):
+        # データセットそのものの順序をシャッフル ただし、ロードごとにシャッフルしたいならDataLoaderでシャッフルさせるべき
         indices_new = self.indices.copy()
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
@@ -212,7 +227,7 @@ class DatasetHandler(Dataset):
 
         return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
 
-    def in_range(self, a, b=None):
+    def in_ratio(self, a, b=None):
         # indices_new = self.indices.copy()
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
@@ -225,7 +240,7 @@ class DatasetHandler(Dataset):
 
         return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
 
-    def ex_range(self, a, b=None):
+    def ex_ratio(self, a, b=None):
         # indices_new = self.indices.copy()
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
@@ -239,8 +254,8 @@ class DatasetHandler(Dataset):
         indices_new = np.array(indices_new)
 
         return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
-
-    def split(self, ratio, balance_label=False, shuffle=False):
+    
+    def split_ratio(self, ratio, balance_label=False, shuffle=False):
         # indices_new = self.indices.copy()
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
@@ -260,12 +275,12 @@ class DatasetHandler(Dataset):
                 a_d[key] = a_idx
                 b_d[key] = b_idx
 
-            indices_a_new = np.array(list(itertools.chain(*a_d.values())), dtype=np.int32)
-            indices_b_new = np.array(list(itertools.chain(*b_d.values())), dtype=np.int32)
+            indices_a_new = np.array(list(itertools.chain(*a_d.values())), dtype=np.int32).sort()
+            indices_b_new = np.array(list(itertools.chain(*b_d.values())), dtype=np.int32).sort()
 
-            if shuffle:
-                np.random.shuffle(indices_a_new)
-                np.random.shuffle(indices_b_new)
+            # if shuffle: # たぶんいらん
+            #     np.random.shuffle(indices_a_new)
+            #     np.random.shuffle(indices_b_new)
 
         else:
             indices_new = self.indices.copy()
@@ -306,8 +321,8 @@ class DatasetHandler(Dataset):
         return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
 
     def balance_label(self, seed=None):
-        # len(classes)ごとに取り出したとき、常に要素の数が極力均等になるように取得
-        # seed="arange"で、該当indeicdをクラスが若い順から順番に、indicesの小さい順でとってくる
+        # len(classes)ごとに取り出したとき、常に要素の数が極力均等になるようにデータセットのincicesを構成
+        # seed="arange"で、該当indeicesをクラスが若い順から順番に、indicesの小さい順でとってくる
         # indices_new = self.indices.copy()
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)

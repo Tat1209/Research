@@ -1,3 +1,4 @@
+import time
 import sys
 from pathlib import Path
 
@@ -13,8 +14,20 @@ from trans import Trans
 ds = Datasets(root=work_path / "assets/datasets/")
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-# tmp = ds("cifar100_train", transform_l=[Trans.tsr])
+# print(len(ds("cars_train").balance_label().fetch_ld()[1]))
+# print(len(ds("pets_train").balance_label().fetch_ld()[1]))
+# print(len(ds("flowers_train").balance_label().fetch_ld()[1]))
+
+a, b = ds("caltech101_trainval").split_ratio(0.4, balance_label=True, shuffle=True)
+a.fetch_ld(output=True)
+b.fetch_ld(output=True)
+# print(a.fetch_ld()[1][0])
+# print(b.fetch_ld()[1][0])
+print(len(a))
+print(len(b))
+# ds("pets_train").balance_label().fetch_ld(output=True)
+# ds("flowers_train").balance_label().fetch_ld(output=True)
 
 # print(ds("mnist_train", transform_l=[Trans.tsr]).calc_min_max(formatted=True))
 # print(ds("cifar10_train", transform_l=[Trans.tsr]).calc_min_max(formatted=True))
-print(ds("mnist_train", transform_l=[Trans.tsr]).calc_mean_std(formatted=True))
+# print(ds("mnist_train", transform_l=[Trans.tsr]).calc_mean_std(formatted=True))

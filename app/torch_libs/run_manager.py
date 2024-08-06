@@ -134,37 +134,6 @@ class RunManager:
                 self.df_metrics.write_csv(self.run_path / Path("metrics.csv"))
             self._fetch_stats().write_csv(self.run_path / Path("stats.csv"))
 
-    # def fetch_stats(self):
-    #     dir_names = list(self.exp_path.iterdir())
-    #     run_ids = [int(dir_name.name) for dir_name in dir_names]
-    #     stats_paths = [dir_name / Path("stats.csv") for dir_name in dir_names]
-
-    #     stats_l = []
-    #     for run_id, stats_path in zip(run_ids, stats_paths):
-    #         try:
-    #             df_stats = pl.read_csv(stats_path)
-    #             df_id = pl.DataFrame({"run_id": run_id})
-    #             df_stats_wid = df_id.hstack(df_stats)
-    #             stats_l.append(df_stats_wid)
-    #         except FileNotFoundError:
-    #             pass
-    #     df = pl.concat(stats_l, how="diagonal_relaxed").sort(pl.col("run_id"))
-
-    #     return df
-
-    # def write_stats(self, fname=None):
-    #     df = self.fetch_stats()
-    #     if fname is None:
-    #         df.write_csv(f"{self.exp_path}.csv")
-    #     else:
-    #         df.write_csv(str(self.pa_path / Path(fname)))
-
-    # exp_のフォルダに直接格納する場合
-    # def write_stats(self, fname="results.csv"):
-    #     df = self.fetch_stats()
-    #     df.write_csv(str(self.exp_path / Path(fname)))
-
-
 class RunsManager:
     def __init__(self, runs):
         self.runs = runs
@@ -173,21 +142,7 @@ class RunsManager:
         def wrapper(*args, **kwargs):
             return_l = []
             for i, run in enumerate(self.runs):
-                # new_args = []
-                # for arg in args:
-                #     if isinstance(arg, list) and len(arg) == len(self.runs):
-                #         new_arg = arg[i]
-                #     else:
-                #         new_arg = arg
-                #     new_args.append(new_arg)
                 new_args = [arg[i] if isinstance(arg, list) and len(arg) == len(self.runs) else arg for arg in args]
-
-                # new_kwargs = dict()
-                # for k, v in kwargs.items():
-                #     if isinstance(v, list) and len(v) == len(self.runs):
-                #         new_kwargs[k] = v[i]
-                #     else:
-                #         new_kwargs[k] = v
                 new_kwargs = {k: v[i] if isinstance(v, list) and len(v) == len(self.runs) else v for k, v in kwargs.items()}
                 return_l.append(getattr(run, attr)(*new_args, **new_kwargs))
             return return_l
