@@ -255,7 +255,7 @@ class DatasetHandler(Dataset):
 
         return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
     
-    def split_ratio(self, ratio, balance_label=False, shuffle=False):
+    def split_ratio(self, ratio, balance_label=False, seed=None):
         # indices_new = self.indices.copy()
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
@@ -266,8 +266,11 @@ class DatasetHandler(Dataset):
             b_d = {}
             for key in label_d:
                 lst = label_d[key]
-                if shuffle:
-                    random.shuffle(lst)
+                if seed != "arange":
+                    if seed is not None and not isinstance(seed, int):
+                        raise TypeError("Variables must be of type int, 'None', or the string 'arange'.")
+                    np.random.seed(seed)
+                    np.random.shuffle(lst)
                 length = len(lst)
                 a_idx = lst[: int(length * ratio)]
                 b_idx = lst[int(length * ratio) :]
@@ -275,16 +278,18 @@ class DatasetHandler(Dataset):
                 a_d[key] = a_idx
                 b_d[key] = b_idx
 
-            indices_a_new = np.array(list(itertools.chain(*a_d.values())), dtype=np.int32).sort()
-            indices_b_new = np.array(list(itertools.chain(*b_d.values())), dtype=np.int32).sort()
-
-            # if shuffle: # たぶんいらん
-            #     np.random.shuffle(indices_a_new)
-            #     np.random.shuffle(indices_b_new)
+            indices_a_new = np.array(list(itertools.chain(*a_d.values())), dtype=np.int32)
+            indices_b_new = np.array(list(itertools.chain(*b_d.values())), dtype=np.int32)
+            
+            indices_a_new.sort()
+            indices_b_new.sort()
 
         else:
             indices_new = self.indices.copy()
-            if shuffle:
+            if seed != "arange":
+                if seed is not None and not isinstance(seed, int):
+                    raise TypeError("Variables must be of type int, 'None', or the string 'arange'.")
+                np.random.seed(seed)
                 np.random.shuffle(indices_new)
             length = len(indices_new)
             indices_a_new = indices_new[: int(length * ratio)]
@@ -440,8 +445,10 @@ class DatasetHandler(Dataset):
 
         else:
             classes = max(label_d.keys()) + 1
-        label_count = [1.0 / len(label_d.get(i, [])) for i in range(classes)]  # インデックスが数字以外だと機能しない
-        weight_tsr = torch.tensor(label_count, dtype=torch.float)
+        label_count_iv = [1.0 / len(label_d.get(i, [])) for i in range(classes)]  # インデックスが数字以外だと機能しない
+        weight_tsr = torch.tensor(label_count_iv, dtype=torch.float) / sum(label_count_iv) * classes
+        
+        print(weight_tsr)
 
         return weight_tsr
 

@@ -25,20 +25,20 @@ exp_name = "exp_pre1"
 epochs = 100
 batch_size = 128
 
-train_ds_str_l = ["cars_train", "pets_train", "flowers_train"]
-val_ds_str_l = ["cars_val", "pets_val", "flowers_test"]
-num_classes_l = [196, 37, 102]
+trainval_ds_str_l = ["caltech101_trainval"]
+num_classes_l = [101]
 
-for train_ds_str, val_ds_str, num_classes in zip(train_ds_str_l, val_ds_str_l, num_classes_l):
+for trainval_ds_str, num_classes in zip(trainval_ds_str_l, num_classes_l):
     for max_lrs in [[0.0005]]:
         runs = [RunManager(exc_path=__file__, exp_name=exp_name) for _ in max_lrs]
         runs_mgr = RunsManager(runs)
 
-        train_trans = [transforms.Resize((256, 256)), transforms.ToTensor(), transforms.RandomHorizontalFlip(p=0.5), transforms.RandomRotation(degrees=(0, 360))]
-        val_trans = [transforms.Resize((256, 256)), transforms.ToTensor()]
-
-        train_ds = ds(train_ds_str, train_trans)
-        val_ds = ds(val_ds_str, val_trans)
+        train_trans = [transforms.Resize((256, 256)), Trans.color, transforms.ToTensor(), transforms.RandomHorizontalFlip(p=0.5), transforms.RandomRotation(degrees=(0, 360))]
+        val_trans = [transforms.Resize((256, 256)), Trans.color, transforms.ToTensor()]
+        
+        train_ds, val_ds = ds(trainval_ds_str).split_ratio(0.7, balance_label=False, seed=0)
+        train_ds = train_ds.transform(train_trans)
+        val_ds = val_ds.transform(val_trans)
 
         runs_mgr.log_param("model_arc", f"{net.__module__} {net.__name__}")
 
@@ -52,7 +52,6 @@ for train_ds_str, val_ds_str, num_classes in zip(train_ds_str_l, val_ds_str_l, n
         runs_mgr.log_param("train_num", len(train_ds))
         runs_mgr.log_param("val_num", len(val_ds))
 
-        # runs_mgr.log_param("epochs", epochs := 3)
         runs_mgr.log_param("epochs", epochs)
         runs_mgr.log_param("max_lr", max_lrs)
         runs_mgr.log_param("batch_size", batch_size)
@@ -66,6 +65,7 @@ for train_ds_str, val_ds_str, num_classes in zip(train_ds_str_l, val_ds_str_l, n
         for i, max_lr in enumerate(max_lrs):
             network = net(num_classes=num_classes)
             loss_func = torch.nn.CrossEntropyLoss()
+            # loss_func = torch.nn.CrossEntropyLoss(weight=train_ds.fetch_weight().to(device))
             optimizer = torch.optim.Adam(network.parameters(), lr=max_lr)
             scheduler_t = (torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0, last_epoch=-1), "epoch")
 

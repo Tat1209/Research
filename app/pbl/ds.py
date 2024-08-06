@@ -18,13 +18,13 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 # print(len(ds("pets_train").balance_label().fetch_ld()[1]))
 # print(len(ds("flowers_train").balance_label().fetch_ld()[1]))
 
-a, b = ds("caltech101_trainval").split_ratio(0.4, balance_label=True, shuffle=True)
+a, b = ds("caltech101_trainval").split_ratio(0.7, balance_label=False, seed=0)
 a.fetch_ld(output=True)
 b.fetch_ld(output=True)
-# print(a.fetch_ld()[1][0])
-# print(b.fetch_ld()[1][0])
-print(len(a))
-print(len(b))
+print(a.fetch_ld()[1][0])
+print(b.fetch_ld()[1][0])
+# print(len(a))
+# print(len(b))
 # ds("pets_train").balance_label().fetch_ld(output=True)
 # ds("flowers_train").balance_label().fetch_ld(output=True)
 

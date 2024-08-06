@@ -2,12 +2,8 @@ import subprocess
 
 
 scripts = [
-"/home/haselab/Documents/tat/Research/app/pbl/main_mnist.py",
-# "/home/haselab/Documents/tat/Research/app/pbl/main_mnist copy.py",
-"/home/haselab/Documents/tat/Research/app/pbl/main_cifar.py",
-# "/home/haselab/Documents/tat/Research/app/pbl/main_cifar copy.py",
-"/home/haselab/Documents/tat/Research/app/pbl/main_tiny.py",
-# "/home/haselab/Documents/tat/Research/app/pbl/main_tiny copy.py",
+"/home/haselab/Documents/tat/Research/app/pbl/main_multi_ds.py",
+"/home/haselab/Documents/tat/Research/app/pbl/main_caltech.py",
 ]
 
 for script in scripts:
