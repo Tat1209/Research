@@ -14,7 +14,8 @@ from trainer import Model, MyMultiTrain
 from trans import Trans
 
 # from models.resnet_1ch import resnet18 as net
-from torchvision.models import resnet18 as net
+# from torchvision.models import resnet18 as net
+from torchvision.models import resnet50 as net
 
 ds = Datasets(root=work_path / "assets/datasets/")
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -36,7 +37,7 @@ for trainval_ds_str, num_classes in zip(trainval_ds_str_l, num_classes_l):
         train_trans = [transforms.Resize((256, 256)), Trans.color, transforms.ToTensor(), transforms.RandomHorizontalFlip(p=0.5), transforms.RandomRotation(degrees=(0, 360))]
         val_trans = [transforms.Resize((256, 256)), Trans.color, transforms.ToTensor()]
         
-        train_ds, val_ds = ds(trainval_ds_str).split_ratio(0.7, balance_label=False, seed=0)
+        train_ds, val_ds = ds(trainval_ds_str).split_ratio(0.7, balance_label=True, seed=0)
         train_ds = train_ds.transform(train_trans)
         val_ds = val_ds.transform(val_trans)
 

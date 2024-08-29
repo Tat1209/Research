@@ -6,7 +6,7 @@ import polars as pl
 
 
 class RunManager:
-    def __init__(self, pa_path=None, exc_path=None, exp_name="exp_default", exp_path=None):
+    def __init__(self, pa_path=None, exc_path=None, exp_name="exp_default", exp_path=None, run_id=None):
         """
         ex.)
             run = RunManager(exc_path=__file__, exp_name="exp_nyancat")
@@ -33,8 +33,10 @@ class RunManager:
         runs_path = exp_path / Path("runs")
         runs_path.mkdir(parents=True, exist_ok=True)
 
-        run_id = Path(self._get_run_id(runs_path))
-        run_path = runs_path / run_id
+        if run_id is None:
+            run_id = self._get_run_id(runs_path)
+
+        run_path = runs_path / str(run_id)
         run_path.mkdir(parents=True, exist_ok=True)
 
         self.pa_path = pa_path
@@ -55,7 +57,7 @@ class RunManager:
             run_id = 0
         else:
             run_id = max(dir_nums) + 1
-        return str(run_id)
+        return run_id
 
     def log_text(self, text, fname):
         with open(self.run_path / Path(str(fname)), "w") as fh:
@@ -133,6 +135,8 @@ class RunManager:
             if hasattr(self, "df_metrics"):
                 self.df_metrics.write_csv(self.run_path / Path("metrics.csv"))
             self._fetch_stats().write_csv(self.run_path / Path("stats.csv"))
+            
+
 
 class RunsManager:
     def __init__(self, runs):

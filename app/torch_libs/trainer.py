@@ -10,7 +10,7 @@ import polars as pl
 from torchinfo import summary
 
 
-class Trainer:
+class TrainerUtils:
     def __init__(self, device):
         if device is None:
             self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -50,7 +50,7 @@ class Trainer:
             print(disp_str, end="\r")
 
 
-class Model(Trainer):
+class Trainer(TrainerUtils):
     def __init__(
         self,
         network=None,
@@ -83,10 +83,10 @@ class Model(Trainer):
             inputs = inputs.to(self.device)
             labels = labels.to(self.device)
 
-            output = self.network(inputs)
-            loss = self.loss_func(output, labels)
+            outputs = self.network(inputs)
+            loss = self.loss_func(outputs, labels)
 
-            _, pred = torch.max(output.detach(), dim=1)
+            _, pred = torch.max(outputs.detach(), dim=1)
             corr = torch.sum(pred == labels.data).item()
 
             total_loss += loss.item() * len(inputs)
@@ -119,10 +119,10 @@ class Model(Trainer):
                 inputs = inputs.to(self.device)
                 labels = labels.to(self.device)
 
-                output = self.network(inputs)
-                loss = self.loss_func(output, labels)
+                outputs = self.network(inputs)
+                loss = self.loss_func(outputs, labels)
 
-                _, pred = torch.max(output.detach(), dim=1)
+                _, pred = torch.max(outputs.detach(), dim=1)
                 corr = torch.sum(pred == labels.data).item()
 
                 total_loss += loss.item() * len(inputs)
@@ -141,17 +141,17 @@ class Model(Trainer):
         with torch.no_grad():
             for inputs, labels in dl:
                 inputs = inputs.to(self.device)
-                output = self.network(inputs)
-                output = output.detach()
+                outputs = self.network(inputs)
+                outputs = outputs.detach()
 
                 if categorize:
-                    _, pred = torch.max(output, dim=1)
-                    output = pred
+                    _, pred = torch.max(outputs, dim=1)
+                    outputs = pred
 
                 if total_output is None:
-                    total_output = output
+                    total_output = outputs
                 else:
-                    total_output = torch.cat((total_output, output), dim=0)
+                    total_output = torch.cat((total_output, outputs), dim=0)
 
                 if total_label is None:
                     total_label = labels
@@ -247,26 +247,29 @@ class Model(Trainer):
         return string
 
     def repr_scheduler(self, use_break=False):
-        format_string = self.scheduler_t[0].__class__.__name__ + " (\n"
-        for attr in dir(self.scheduler_t[0]):
-            if not attr.startswith("_") and not callable(getattr(self.scheduler_t[0], attr)):  # exclude special attributes and methods
-                if attr.startswith("optimizer"):
-                    value = f"{getattr(self.scheduler_t[0], attr).__class__.__name__}()"
-                else:
-                    value = getattr(self.scheduler_t[0], attr)
-                format_string += f"{attr} = {value}\n"
-        format_string += ")"
+        if self.scheduler_t is None:
+            return None
+        else:
+            format_string = self.scheduler_t[0].__class__.__name__ + " (\n"
+            for attr in dir(self.scheduler_t[0]):
+                if not attr.startswith("_") and not callable(getattr(self.scheduler_t[0], attr)):  # exclude special attributes and methods
+                    if attr.startswith("optimizer"):
+                        value = f"{getattr(self.scheduler_t[0], attr).__class__.__name__}()"
+                    else:
+                        value = getattr(self.scheduler_t[0], attr)
+                    format_string += f"{attr} = {value}\n"
+            format_string += ")"
 
-        if not use_break:
-            format_string = format_string.replace("\n", " ")
-        return format_string
+            if not use_break:
+                format_string = format_string.replace("\n", " ")
+            return format_string
 
     def repr_device(self):
         return repr(self.device)
 
 
 # Ensは、一つの同じローダーでアンサンブルするためのもの
-class Ens_1Loader(Trainer):
+class Ens_1Loader(TrainerUtils):
     def __init__(self, models=None, device=None):
         self.models = models
         super().__init__(device)
@@ -286,11 +289,11 @@ class Ens_1Loader(Trainer):
                 labels = labels.to(self.device)
 
                 outputs = [model.network(inputs) for model in self.models]
-                output = torch.mean(torch.stack(outputs), dim=0)
+                outputs = torch.mean(torch.stack(outputs), dim=0)
 
-                loss = self.loss_func(output, labels)
+                loss = self.loss_func(outputs, labels)
 
-                _, pred = torch.max(output.detach(), dim=1)
+                _, pred = torch.max(outputs.detach(), dim=1)
                 corr = torch.sum(pred == labels.data).item()
 
                 total_loss += loss.item() * len(inputs)
@@ -331,10 +334,10 @@ class PureEns_1Loader(Ens_1Loader):
             labels = labels.to(self.device)
 
             outputs = [model.network(inputs) for model in self.models]
-            output = torch.mean(torch.stack(outputs), dim=0)
+            outputs = torch.mean(torch.stack(outputs), dim=0)
             losses = [self.models[m].loss_func(outputs[m], labels) for m in range(len(self.models))]
 
-            _, pred = torch.max(output.detach(), dim=1)
+            _, pred = torch.max(outputs.detach(), dim=1)
             corr = torch.sum(pred == labels.data).item()
 
             total_loss += sum([loss.item() for loss in losses]) * len(inputs)
@@ -375,10 +378,10 @@ class MergeEns_1Loader(Ens_1Loader):
             labels = labels.to(self.device)
 
             outputs = [model.network(inputs) for model in self.models]
-            output = torch.mean(torch.stack(outputs), dim=0)
-            loss = model.loss_func(output, labels)
+            outputs = torch.mean(torch.stack(outputs), dim=0)
+            loss = model.loss_func(outputs, labels)
 
-            _, pred = torch.max(output.detach(), dim=1)
+            _, pred = torch.max(outputs.detach(), dim=1)
             corr = torch.sum(pred == labels.data).item()
 
             total_loss += loss.item() * len(inputs)
@@ -403,7 +406,7 @@ class MergeEns_1Loader(Ens_1Loader):
         return train_loss, train_acc
 
 
-class MultiTrain(Trainer):
+class MultiTrain(TrainerUtils):
     def __init__(self, models=None, device=None):
         self.models = models
         super().__init__(device)
@@ -514,7 +517,7 @@ class MultiTrain(Trainer):
         return wrapper
 
 
-class MyMultiTrain(Trainer):
+class MyMultiTrain(TrainerUtils):
     def __init__(self, models=None, device=None):
         self.models = models
         super().__init__(device)
@@ -530,10 +533,10 @@ class MyMultiTrain(Trainer):
             labels = labels.to(self.device)
 
             for i, model in enumerate(self.models):
-                output = model.network(inputs)
-                loss = model.loss_func(output, labels)
+                outputs = model.network(inputs)
+                loss = model.loss_func(outputs, labels)
 
-                _, pred = torch.max(output.detach(), dim=1)
+                _, pred = torch.max(outputs.detach(), dim=1)
                 corr = torch.sum(pred == labels.data).item()
 
                 total_losses[i] += loss.item() * len(inputs)
@@ -571,10 +574,10 @@ class MyMultiTrain(Trainer):
                 labels = labels.to(self.device)
 
                 for i, model in enumerate(self.models):
-                    output = model.network(inputs)
-                    loss = model.loss_func(output, labels)
+                    outputs = model.network(inputs)
+                    loss = model.loss_func(outputs, labels)
 
-                    _, pred = torch.max(output.detach(), dim=1)
+                    _, pred = torch.max(outputs.detach(), dim=1)
                     corr = torch.sum(pred == labels.data).item()
 
                     total_losses[i] += loss.item() * len(inputs)

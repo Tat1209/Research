@@ -185,6 +185,7 @@ class Datasets:
         return DatasetHandler(ds, indices, transform, target_transform)
 
 
+# クラスの数を減らすなら、indicesのほかにclasses (ラベル名を保管しているリスト) を作ってそれも毎回コピる必要がある。その後、__getitem__のtargetを修正する必要あり
 class DatasetHandler(Dataset):
     # self.indicesは、常にnp.array(), label_l, label_dのvalueはlist
     def __init__(self, dataset, indices, transform, target_transform):
@@ -404,6 +405,11 @@ class DatasetHandler(Dataset):
             np.random.shuffle(indices_new)
 
         return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+    
+    def fetch_classes(self, base_classes=False):
+        blabel_l, blabel_d = self.fetch_base_ld()
+        return len(blabel_d)
+        
 
     def fetch_ld(self, output=False):
         # try:
