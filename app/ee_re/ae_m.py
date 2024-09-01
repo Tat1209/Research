@@ -26,18 +26,17 @@ exp_name = "exp_csg_64"
 
 # epochs = 1
 epochs = 100
-batch_size = 32
+batch_size = 128
 
-for max_lrs in [[0.0001, 0.001, 0.01]]:
-
-
+for max_lrs in [[0.001]]:
     runs = [RunManager(exc_path=__file__, exp_name=exp_name) for _ in max_lrs]
     runs_mgr = RunsManager(runs)
 
     train_trans = [transforms.Resize((64, 64)), transforms.ToTensor()]
     # val_trans = [transforms.ToTensor()]
 
-    train_ds = ds("cifar10_train", transform_l=train_trans)
+    train_ds = ds("stl10_train", transform_l=train_trans)
+    # train_ds = ds("cifar10_train", transform_l=train_trans)
     ae_dl = dl(train_ds, batch_size=batch_size)
 
     runs_mgr.log_param("model_arc", f"{net.__module__} {net.__name__}")
@@ -76,10 +75,10 @@ for max_lrs in [[0.0001, 0.001, 0.01]]:
 
     runs_mgr.log_param("params", mmodel.count_params())
     hp_dict = {
-        "loss_func": mmodel.repr_loss_func(),
-        "optimizer": mmodel.repr_optimizer(),
-        "scheduler": mmodel.repr_scheduler(),
-    }
+            "loss_func": mmodel.repr_loss_func(),
+            "optimizer": mmodel.repr_optimizer(),
+            "scheduler": mmodel.repr_scheduler(),
+            }
 
     runs_mgr.log_params(hp_dict)
     runs_mgr.log_text(mmodel.repr_network(), "model_layers.txt")
@@ -103,7 +102,7 @@ for max_lrs in [[0.0001, 0.001, 0.01]]:
     out = mmodel.fetch_embs(emb_dl)
 
     for i, model_out in enumerate(out):
-        
+
         embs, labels = model_out
 
         X = embs.view(embs.shape[0], -1).numpy()  # 画像をフラット化してnumpy配列に変換
@@ -115,7 +114,9 @@ for max_lrs in [[0.0001, 0.001, 0.01]]:
         estimator.fit(data=X, target=y)
 
         print(estimator.csg)
-        runs_mgr[i].log_param("csg", estimator.csg)
+        runs_mgr[i].log_param("csg", estimator.csg[0])
+
+    runs_mgr.ref_stats()
 
     rv = RunViewer(exc_path=__file__, exp_name=exp_name)
     rv.ref_results()

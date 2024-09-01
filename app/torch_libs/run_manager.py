@@ -35,6 +35,8 @@ class RunManager:
 
         if run_id is None:
             run_id = self._get_run_id(runs_path)
+        else:
+            self._inherit_stats()
 
         run_path = runs_path / str(run_id)
         run_path.mkdir(parents=True, exist_ok=True)
@@ -50,6 +52,9 @@ class RunManager:
     # def __call__(self, fname):
     #     return self.run_path / Path(fname)
 
+    def fpath(self, fname):
+        return self.run_path / Path(fname)
+
     def _get_run_id(self, runs_path):
         dir_names = list(runs_path.iterdir())
         dir_nums = [int(dir_name.name) for dir_name in dir_names]
@@ -60,22 +65,22 @@ class RunManager:
         return run_id
 
     def log_text(self, text, fname):
-        with open(self.run_path / Path(str(fname)), "w") as fh:
+        with open(self.fpath(fname), "w") as fh:
             fh.write(text)
 
-    def log_csv(self, df, fname, *args, **kwargs):
-        df.write_csv(self.run_path / Path(fname), *args, **kwargs)
+    # def log_df(self, df, fname):
+    #     df.write_csv(self.run_path / Path(fname))
+    #     # df.write_csv(self(fname))
+
+    def log_df2csv(self, df, fname, *args, **kwargs):
+        df.write_csv(self.fpath(fname), *args, **kwargs)
         # df.write_csv(run.run_path / Path("xxx"), ...)
 
     def log_torch_save(self, object, fname):
-        torch.save(object, self.run_path / Path(fname))
+        torch.save(object, self.fpath(fname))
 
     def log_param(self, name, value):
         self.log_params({name: value})
-
-    def log_df(self, df, fname):
-        df.write_csv(self.run_path / Path(fname))
-        # df.write_csv(self(fname))
 
     def log_params(self, stored_dict):
         stored_dict = {k: [v] for k, v in stored_dict.items()}
@@ -111,6 +116,12 @@ class RunManager:
             else:
                 df = df.with_columns(pl.when(df[index_column_name] == index).then(value).otherwise(pl.lit(None)).alias(column))
         return df
+    
+    def _inherit_stats(self):
+        if self.fpath("param.csv").exists():
+            self.df_params = pl.read_csv(self.fpath("param.csv"))
+        if self.fpath("metrics.csv").exists():
+            self.df_metrics = pl.read_csv(self.fpath("metrics.csv"))
 
     def _fetch_stats(self):
         if hasattr(self, "df_params"):
@@ -131,10 +142,12 @@ class RunManager:
     def ref_stats(self, itv=None, step=None, last_step=None):
         if itv is None or (step - 1) % itv >= itv - 1 or step == last_step:
             if hasattr(self, "df_params"):
-                self.df_params.write_csv(self.run_path / Path("param.csv"))
+                self.df_params.write_csv(self.fpath("params.csv"))
             if hasattr(self, "df_metrics"):
-                self.df_metrics.write_csv(self.run_path / Path("metrics.csv"))
-            self._fetch_stats().write_csv(self.run_path / Path("stats.csv"))
+                self.df_metrics.write_csv(self.fpath("metrics.csv"))
+            self._fetch_stats().write_csv(self.fpath("stats.csv"))
+            
+        
             
 
 
