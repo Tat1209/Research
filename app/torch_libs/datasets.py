@@ -179,18 +179,20 @@ class Datasets:
         ds.u_seed = u_seed
 
         indices = np.arange(len(ds))
+        classes = None
         transform = torchvision.transforms.Compose(transform_l)
         target_transform = torchvision.transforms.Compose(target_transform_l)
 
-        return DatasetHandler(ds, indices, transform, target_transform)
+        return DatasetHandler(ds, indices, classes, transform, target_transform)
 
 
 # クラスの数を減らすなら、indicesのほかにclasses (ラベル名を保管しているリスト) を作ってそれも毎回コピる必要がある。その後、__getitem__のtargetを修正する必要あり
 class DatasetHandler(Dataset):
     # self.indicesは、常にnp.array(), label_l, label_dのvalueはlist
-    def __init__(self, dataset, indices, transform, target_transform):
+    def __init__(self, dataset, indices, classes, transform, target_transform):
         self.dataset = dataset
         self.indices = indices
+        self.classes = classes
         self._transform = transform
         self._target_transform = target_transform
 
@@ -213,6 +215,7 @@ class DatasetHandler(Dataset):
     def shuffle(self, seed=None):
         # データセットそのものの順序をシャッフル ただし、ロードごとにシャッフルしたいならDataLoaderでシャッフルさせるべき
         indices_new = self.indices.copy()
+        classes_new = copy(self.classes)
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
 
@@ -226,10 +229,11 @@ class DatasetHandler(Dataset):
             np.random.seed(seed)
             np.random.shuffle(indices_new)
 
-        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+        return DatasetHandler(self.dataset, indices_new, classes_new, transform_new, target_transform_new)
 
     def in_ratio(self, a, b=None):
         # indices_new = self.indices.copy()
+        classes_new = copy(self.classes)
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
         range_t = (a, b) if b else (0, a)
@@ -239,10 +243,11 @@ class DatasetHandler(Dataset):
         idx_range = (int(range_t[0] * data_num), int(range_t[1] * data_num))
         indices_new = self.indices[idx_range[0] : idx_range[1]]
 
-        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+        return DatasetHandler(self.dataset, indices_new, classes_new, transform_new, target_transform_new)
 
     def ex_ratio(self, a, b=None):
         # indices_new = self.indices.copy()
+        classes_new = copy(self.classes)
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
 
@@ -254,12 +259,48 @@ class DatasetHandler(Dataset):
         indices_new = list(self.indices[: idx_range[0]]) + list(self.indices[idx_range[1] :])
         indices_new = np.array(indices_new)
 
-        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+        return DatasetHandler(self.dataset, indices_new, classes_new, transform_new, target_transform_new)
+
+    def in_ndata(self, a, b=None):
+        # indices_new = self.indices.copy()
+        classes_new = copy(self.classes)
+        transform_new = copy(self._transform)
+        target_transform_new = copy(self._target_transform)
+        range_t = (a, b) if b else (0, a)
+        if isinstance(a, tuple):
+            range_t = (a[0], a[1])
+        # data_num = len(self.indices)
+        idx_range = (range_t[0], range_t[1])
+        indices_new = self.indices[idx_range[0] : idx_range[1]]
+
+        return DatasetHandler(self.dataset, indices_new, classes_new, transform_new, target_transform_new)
+
+    def ex_ndata(self, a, b=None):
+        # indices_new = self.indices.copy()
+        classes_new = copy(self.classes)
+        transform_new = copy(self._transform)
+        target_transform_new = copy(self._target_transform)
+
+        range_t = (a, b) if b else (0, a)
+        if isinstance(a, tuple):
+            range_t = (a[0], a[1])
+        # data_num = len(self.indices)
+        idx_range = (range_t[0], range_t[1])
+        indices_new = list(self.indices[: idx_range[0]]) + list(self.indices[idx_range[1] :])
+        indices_new = np.array(indices_new)
+
+        return DatasetHandler(self.dataset, indices_new, classes_new, transform_new, target_transform_new)
     
     def split_ratio(self, ratio, balance_label=False, seed=None):
         # indices_new = self.indices.copy()
-        transform_new = copy(self._transform)
-        target_transform_new = copy(self._target_transform)
+        classes_a_new = copy(self.classes)
+        transform_a_new = copy(self._transform)
+        target_transform_a_new = copy(self._target_transform)
+
+        # indices_new = self.indices.copy()
+        classes_b_new = copy(self.classes)
+        transform_b_new = copy(self._transform)
+        target_transform_b_new = copy(self._target_transform)
 
         if balance_label:
             label_l, label_d = self.fetch_ld()
@@ -296,40 +337,69 @@ class DatasetHandler(Dataset):
             indices_a_new = indices_new[: int(length * ratio)]
             indices_b_new = indices_new[int(length * ratio) :]
 
-        a = DatasetHandler(self.dataset, indices_a_new, transform_new, target_transform_new)
-        b = DatasetHandler(self.dataset, indices_b_new, transform_new, target_transform_new)
+        a = DatasetHandler(self.dataset, indices_a_new, classes_a_new, transform_a_new, target_transform_a_new)
+        b = DatasetHandler(self.dataset, indices_b_new, classes_b_new, transform_b_new, target_transform_b_new)
 
         return a, b
 
     def transform(self, transform_l):
         indices_new = self.indices.copy()
+        classes_new = copy(self.classes)
         # transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
 
         transform_new = torchvision.transforms.Compose(transform_l)
-        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+        return DatasetHandler(self.dataset, indices_new, classes_new, transform_new, target_transform_new)
 
     def target_transform(self, target_transform_l):
         indices_new = self.indices.copy()
+        classes_new = copy(self.classes)
         transform_new = copy(self._transform)
         # target_transform_new = copy(self._target_transform)
 
         target_transform_new = torchvision.transforms.Compose(target_transform_l)
-        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+        return DatasetHandler(self.dataset, indices_new, classes_new, transform_new, target_transform_new)
 
     def __add__(self, other):
         # indices_new = self.indices.copy()
+        classes_new = copy(self.classes)
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
 
         indices_new = np.concatenate((self.indices, other.indices))
 
-        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+        return DatasetHandler(self.dataset, indices_new, classes_new, transform_new, target_transform_new)
+    
+    def limit_class(self, max_num=None, labels: list=None):
+        # indices_new = self.indices.copy()
+        # classes_new = copy(self.classes)
+        transform_new = copy(self._transform)
+        target_transform_new = copy(self._target_transform)
+
+        label_l, label_d = self.fetch_ld()
+        
+        if max_num is not None:
+            # {k:len(v) for k, v in label_d.items()}
+            # labels = list(dict(sorted(label_d.items(), key=lambda item: len(item[1]), reverse=True)).keys())[:max_num]
+            labels = list(dict(sorted(label_d.items(), key=lambda item: len(item[1]), reverse=True)[:max_num]).keys())
+        
+        classes_new = labels
+        indices_new = np.array([], dtype=np.int32)
+        
+        for label in labels:
+            indices = label_d[label]
+            # indices_new.extend(indices)
+            indices_new = np.concatenate((indices_new, indices))
+
+        return DatasetHandler(self.dataset, indices_new, classes_new, transform_new, target_transform_new)
+
 
     def balance_label(self, seed=None):
         # len(classes)ごとに取り出したとき、常に要素の数が極力均等になるようにデータセットのincicesを構成
         # seed="arange"で、該当indeicesをクラスが若い順から順番に、indicesの小さい順でとってくる
+
         # indices_new = self.indices.copy()
+        classes_new = copy(self.classes)
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
 
@@ -344,13 +414,13 @@ class DatasetHandler(Dataset):
 
         # 各クラスのラベル数を取得・クラス名を取得
         lens_d = {k: len(v) for k, v in label_d.items()}
-        class_d = lens_d.keys()
+        classes = lens_d.keys()
 
         # クラス名だけで構成されたclass_arrayを作成
         class_array = []
         counter = lens_d.copy()
         while True:
-            valid_keys = [c for c in class_d if 0 < counter[c]]  # len_dのkeyのうち、まだvalue個格納されていないものを選択する
+            valid_keys = [c for c in classes if 0 < counter[c]]  # len_dのkeyのうち、まだvalue個格納されていないものを選択する
             if max(counter.values()) == 0:
                 break
             for _ in range(min([labels for labels in counter.values() if 0 < labels])):
@@ -379,10 +449,11 @@ class DatasetHandler(Dataset):
             indices_new.append(value)
             shuffled_label_d[key] = shuffled_label_d[key][1:]  # shuffled_label_d[key]のリストから先頭の要素を削除する
 
-        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+        return DatasetHandler(self.dataset, indices_new, classes_new, transform_new, target_transform_new)
 
     def mult_label(self, mult_dict=None, seed=None):
         # indices_new = self.indices.copy()
+        classes_new = copy(self.classes)
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
 
@@ -404,12 +475,17 @@ class DatasetHandler(Dataset):
             np.random.seed(seed)
             np.random.shuffle(indices_new)
 
-        return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+        return DatasetHandler(self.dataset, indices_new, classes_new, transform_new, target_transform_new)
     
-    def fetch_classes(self, base_classes=False):
-        blabel_l, blabel_d = self.fetch_base_ld()
-        return len(blabel_d)
+    def fetch_classes(self, base_classes=False, list=False):
+        if base_classes  or  self.classes is None:
+            blabel_l, blabel_d = self.fetch_base_ld()
+            self.classes = blabel_d.keys()
         
+        if list:
+            return self.classes
+        else:
+            return len(self.classes)
 
     def fetch_ld(self, output=False):
         # try:
@@ -419,14 +495,18 @@ class DatasetHandler(Dataset):
         blabel_l, blabel_d = self.fetch_base_ld()
 
         label_l = []  # label のリストを作成
-        label_d = dict()  # index と対応させ、label を key とし、index を item とした dict を作成
+        # label_d = dict()  # index と対応させ、label を key とし、index を item とした dict を作成
+        label_d = {i: [] for i in self.fetch_classes(list=True)} 
         for idx in self.indices:
             label = blabel_l[idx]
             label_l.append(label)
-            if label_d.get(label) is None:
-                label_d[label] = [idx]
-            else:
-                label_d[label].append(idx)
+
+            # if label_d.get(label) is None:
+            #     label_d[label] = [idx]
+            # else:
+            #     label_d[label].append(idx)
+
+            label_d[label].append(idx)
 
         label_d = dict(sorted(label_d.items()))
 
@@ -436,7 +516,7 @@ class DatasetHandler(Dataset):
 
         return label_l, label_d
 
-    def fetch_weight(self, base_classes=False, num_classes=-1):
+    def fetch_weight(self, base_classes=False):
         """
         Ex.)
         loss_func = torch.nn.CrossEntropyLoss(weight=train_ds.fetch_weight(base_classes=True).to(device))
@@ -446,16 +526,12 @@ class DatasetHandler(Dataset):
             blabel_l, blabel_d = self.fetch_base_ld()
             classes = max(blabel_d.keys()) + 1
 
-        elif num_classes != -1:
-            classes = num_classes
-
         else:
             classes = max(label_d.keys()) + 1
+
         label_count_iv = [1.0 / len(label_d.get(i, [])) for i in range(classes)]  # インデックスが数字以外だと機能しない
         weight_tsr = torch.tensor(label_count_iv, dtype=torch.float) / sum(label_count_iv) * classes
         
-        print(weight_tsr)
-
         return weight_tsr
 
     def fetch_base_ld(self):

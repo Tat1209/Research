@@ -21,8 +21,8 @@ from trainer_ae import AETrainer, AEMultiTrain
 ds = Datasets(root=work_path / "assets/datasets/")
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-exp_name = "exp_csg_64"
-# exp_name = "exp_csg_tmp"
+# exp_name = "exp_csg_64"
+exp_name = "exp_csg_tmp"
 
 # epochs = 1
 epochs = 100

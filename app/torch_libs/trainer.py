@@ -18,14 +18,17 @@ class TrainerUtils:
             self.device = device
         self.start_time = None
 
-    def printlog(self, log_dict, e, epochs, itv=10, anyval=False):
+    def interval(self, itv=None, step=None, last_step=None):
+        return itv is None or (step - 1) % itv >= itv - 1 or step == last_step
+
+    def printlog(self, log_dict, e, epochs, itv=10, anyval=False, timezone=9):
         if e == 1:
             self.start_time = time()
         else:
             stop_time = time()
             req_time = (stop_time - self.start_time) / (e - 1) * epochs
             left = self.start_time + req_time - stop_time
-            eta = (datetime.datetime.now() + datetime.timedelta(seconds=left) + datetime.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
+            eta = (datetime.datetime.now() + datetime.timedelta(seconds=left) + datetime.timedelta(hours=timezone)).strftime("%Y-%m-%d %H:%M")
             t_hour, t_min = divmod(left // 60, 60)
             left = f"{int(t_hour):02d}:{int(t_min):02d}"
 
@@ -44,7 +47,8 @@ class TrainerUtils:
         if (e - 1) != 0:
             disp_str += f"    eta: {eta} (left: {left})"
 
-        if (e - 1) % itv >= itv - 1 or e == epochs:
+        # if (e - 1) % itv >= itv - 1 or e == epochs:
+        if self.interval(itv=itv, step=e, last_step=epochs):
             print(disp_str)
         else:
             print(disp_str, end="\r")
@@ -588,6 +592,7 @@ class MyMultiTrain(TrainerUtils):
 
         return val_losses, val_accs
         # return list(zip(val_losses, val_accs))
+        
 
     def __getattr__(self, attr):
         def wrapper(*args, **kwargs):

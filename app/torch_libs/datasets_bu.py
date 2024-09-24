@@ -136,14 +136,28 @@ class Datasets:
                 return torchvision.datasets.CIFAR10(root=self.root, train=False)
             case "stl10_train":
                 return torchvision.datasets.STL10(root=self.root, split="train")
-            case "stl10_test":
+            case "stl10_val":
                 return torchvision.datasets.STL10(root=self.root, split="test")
-            case "caltech":
+            case "caltech101_trainval":
                 return torchvision.datasets.Caltech101(root=self.root, target_type="category")
             case "tiny-imagenet_train":
                 return TinyImageNet(root=self.root, train=True)
             case "tiny-imagenet_val":
                 return TinyImageNet(root=self.root, train=False)
+            case "cars_train":
+                return torchvision.datasets.StanfordCars(root=self.root, split="train")
+            case "cars_val":
+                return torchvision.datasets.StanfordCars(root=self.root, split="test")
+            case "pets_train":
+                return torchvision.datasets.OxfordIIITPet(root=self.root, split="trainval", target_types="category")
+            case "pets_val":
+                return torchvision.datasets.OxfordIIITPet(root=self.root, split="test", target_types="category")
+            case "flowers_train":
+                return torchvision.datasets.Flowers102(root=self.root, split="train")
+            case "flowers_val":
+                return torchvision.datasets.Flowers102(root=self.root, split="val")
+            case "flowers_test":
+                return torchvision.datasets.Flowers102(root=self.root, split="test")
             case "imagenet":
                 return torchvision.datasets.ImageNet(root=self.root, split="val")
             case "mnist_ddim":
@@ -171,6 +185,7 @@ class Datasets:
         return DatasetHandler(ds, indices, transform, target_transform)
 
 
+# クラスの数を減らすなら、indicesのほかにclasses (ラベル名を保管しているリスト) を作ってそれも毎回コピる必要がある。その後、__getitem__のtargetを修正する必要あり
 class DatasetHandler(Dataset):
     # self.indicesは、常にnp.array(), label_l, label_dのvalueはlist
     def __init__(self, dataset, indices, transform, target_transform):
@@ -196,6 +211,7 @@ class DatasetHandler(Dataset):
         return len(self.indices)
 
     def shuffle(self, seed=None):
+        # データセットそのものの順序をシャッフル ただし、ロードごとにシャッフルしたいならDataLoaderでシャッフルさせるべき
         indices_new = self.indices.copy()
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
@@ -212,7 +228,7 @@ class DatasetHandler(Dataset):
 
         return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
 
-    def in_range(self, a, b=None):
+    def in_ratio(self, a, b=None):
         # indices_new = self.indices.copy()
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
@@ -225,7 +241,7 @@ class DatasetHandler(Dataset):
 
         return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
 
-    def ex_range(self, a, b=None):
+    def ex_ratio(self, a, b=None):
         # indices_new = self.indices.copy()
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
@@ -239,8 +255,8 @@ class DatasetHandler(Dataset):
         indices_new = np.array(indices_new)
 
         return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
-
-    def split(self, ratio, balance_label=False, shuffle=False):
+    
+    def split_ratio(self, ratio, balance_label=False, seed=None):
         # indices_new = self.indices.copy()
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
@@ -251,8 +267,11 @@ class DatasetHandler(Dataset):
             b_d = {}
             for key in label_d:
                 lst = label_d[key]
-                if shuffle:
-                    random.shuffle(lst)
+                if seed != "arange":
+                    if seed is not None and not isinstance(seed, int):
+                        raise TypeError("Variables must be of type int, 'None', or the string 'arange'.")
+                    np.random.seed(seed)
+                    np.random.shuffle(lst)
                 length = len(lst)
                 a_idx = lst[: int(length * ratio)]
                 b_idx = lst[int(length * ratio) :]
@@ -262,14 +281,16 @@ class DatasetHandler(Dataset):
 
             indices_a_new = np.array(list(itertools.chain(*a_d.values())), dtype=np.int32)
             indices_b_new = np.array(list(itertools.chain(*b_d.values())), dtype=np.int32)
-
-            if shuffle:
-                np.random.shuffle(indices_a_new)
-                np.random.shuffle(indices_b_new)
+            
+            indices_a_new.sort()
+            indices_b_new.sort()
 
         else:
             indices_new = self.indices.copy()
-            if shuffle:
+            if seed != "arange":
+                if seed is not None and not isinstance(seed, int):
+                    raise TypeError("Variables must be of type int, 'None', or the string 'arange'.")
+                np.random.seed(seed)
                 np.random.shuffle(indices_new)
             length = len(indices_new)
             indices_a_new = indices_new[: int(length * ratio)]
@@ -306,8 +327,8 @@ class DatasetHandler(Dataset):
         return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
 
     def balance_label(self, seed=None):
-        # len(classes)ごとに取り出したとき、常に要素の数が極力均等になるように取得
-        # seed="arange"で、該当indeicdをクラスが若い順から順番に、indicesの小さい順でとってくる
+        # len(classes)ごとに取り出したとき、常に要素の数が極力均等になるようにデータセットのincicesを構成
+        # seed="arange"で、該当indeicesをクラスが若い順から順番に、indicesの小さい順でとってくる
         # indices_new = self.indices.copy()
         transform_new = copy(self._transform)
         target_transform_new = copy(self._target_transform)
@@ -384,6 +405,11 @@ class DatasetHandler(Dataset):
             np.random.shuffle(indices_new)
 
         return DatasetHandler(self.dataset, indices_new, transform_new, target_transform_new)
+    
+    def fetch_classes(self, base_classes=False):
+        blabel_l, blabel_d = self.fetch_base_ld()
+        return len(blabel_d)
+        
 
     def fetch_ld(self, output=False):
         # try:
@@ -425,8 +451,10 @@ class DatasetHandler(Dataset):
 
         else:
             classes = max(label_d.keys()) + 1
-        label_count = [1.0 / len(label_d.get(i, [])) for i in range(classes)]  # インデックスが数字以外だと機能しない
-        weight_tsr = torch.tensor(label_count, dtype=torch.float)
+        label_count_iv = [1.0 / len(label_d.get(i, [])) for i in range(classes)]  # インデックスが数字以外だと機能しない
+        weight_tsr = torch.tensor(label_count_iv, dtype=torch.float) / sum(label_count_iv) * classes
+        
+        print(weight_tsr)
 
         return weight_tsr
 
