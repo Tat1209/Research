@@ -137,7 +137,7 @@ class Trainer(TrainerUtils):
 
         return val_loss, val_acc
 
-    def pred_1iter(self, dl, categorize=True):
+    def pred_1iter(self, dl, categorize=False):
         self.network.eval()
         total_output = None
         total_label = None
@@ -145,6 +145,7 @@ class Trainer(TrainerUtils):
         with torch.no_grad():
             for inputs, labels in dl:
                 inputs = inputs.to(self.device)
+                labels = labels.to(self.device) # Noneのときどうなるかは分からん
                 outputs = self.network(inputs)
                 outputs = outputs.detach()
 
@@ -160,7 +161,7 @@ class Trainer(TrainerUtils):
                 if total_label is None:
                     total_label = labels
                 else:
-                    total_label.extend(labels)
+                    total_label= torch.cat((total_label, labels), dim=0)
 
         return total_output, total_label
 
@@ -533,6 +534,7 @@ class MyMultiTrain(TrainerUtils):
         total_corrs = [0.0 for _ in self.models]
 
         for inputs, labels in dl:
+            # labels = torch.Tensor([0 for _ in range(len(labels))]).long() # 消すこと
             inputs = inputs.to(self.device)
             labels = labels.to(self.device)
 

@@ -14,15 +14,15 @@ from trans import Trans
 ds = Datasets(root=work_path / "assets/datasets/")
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-# a = ds("tiny-imagenet_train").limit_class(max_num=100)
 
-base_train_ds = ds(train_ds_str, train_trans).balance_label(seed=0).limit_class(max_num=10)
-val_ds = ds(val_ds_str, val_trans).limit_class(base_train_ds.fetch_classes(list=True))
+# base_train_ds = ds(train_ds_str, train_trans).balance_label(seed=0).limit_class(max_num=10)
+# val_ds = ds(val_ds_str, val_trans).limit_class(base_train_ds.fetch_classes(list=True))
 
-a = ds("caltech101_trainval").limit_class(max_num=10).balance_label()
-label_l, label_d = a.fetch_ld(output=True)
-print(a.fetch_classes())
+a = ds("tiny-imagenet_val").limit_class(max_num=100)
+# a = ds("caltech101_trainval").limit_class(max_num=10).balance_label()
+# label_l, label_d = a.fetch_ld(output=True)
+a.fetch_ld(output=True)
+# print(a.fetch_classes(listed=True))
 # label_l, label_d = a.fetch_ld(output=True)
 
-print(label_l)
 

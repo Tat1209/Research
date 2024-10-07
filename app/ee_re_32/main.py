@@ -9,7 +9,7 @@ work_path = Path(next((p for p in Path(__file__).resolve().parents if p.name == 
 torchlib_path = str(work_path / Path("app/torch_libs"))
 sys.path.append(torchlib_path)
 
-from datasets import Datasets, dl
+from datasets import Datasets
 from run_manager import RunManager, RunsManager, RunViewer
 from trainer import Trainer, MyMultiTrain
 from trans import Trans
@@ -20,19 +20,18 @@ from models.gitresnet_ee import resnet18 as net
 ds = Datasets(root=work_path / "assets/datasets/")
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-exp_name = "exp_ee32x32_lc"
+# exp_name = "exp_ee32x32_lc"
+exp_name = "exp_tmp"
 
-
-# exp_name = "exp_tmp"
-
-# epochs = 2
 base_epochs = 100
 base_ndata = 10000
 max_lr = 0.0005
 batch_size = 128
 
-train_ds_str_l = ["mnist_train", "cifar10_train", "cifar100_train", "stl10_train", "tiny-imagenet_train", "cars_train", "pets_train"]
-val_ds_str_l = ["mnist_val", "cifar10_val", "cifar100_val", "stl10_val", "tiny-imagenet_val", "cars_val", "pets_val"]
+train_ds_str_l = ["cars_train", "pets_train"]
+val_ds_str_l = ["cars_val", "pets_val"]
+# train_ds_str_l = ["mnist_train", "cifar10_train", "cifar100_train", "stl10_train", "tiny-imagenet_train", "cars_train", "pets_train"]
+# val_ds_str_l = ["mnist_val", "cifar10_val", "cifar100_val", "stl10_val", "tiny-imagenet_val", "cars_val", "pets_val"]
 ndata_l = [500, 1000, 2000, 3000, 4000, 5000, 7500, 10000]
 
 base_fils = 32
@@ -47,8 +46,8 @@ for train_ds_str, val_ds_str in zip(train_ds_str_l, val_ds_str_l):
     # base_train_ds = ds(train_ds_str, train_trans).balance_label(seed=0)
     # val_ds = ds(val_ds_str, val_trans)
 
-    base_train_ds = ds(train_ds_str, train_trans).balance_label(seed=0).limit_class(max_num=10)
-    val_ds = ds(val_ds_str, val_trans).limit_class(labels=base_train_ds.fetch_classes(list=True))
+    base_train_ds = ds(train_ds_str, train_trans).limit_class(max_num=10).balance_label(seed=0)
+    val_ds = ds(val_ds_str, val_trans).limit_class(labels=base_train_ds.fetch_classes(listed=True))
     
     for ndata in ndata_l:
         train_ds = base_train_ds.in_ndata(ndata)
@@ -77,8 +76,10 @@ for train_ds_str, val_ds_str in zip(train_ds_str_l, val_ds_str_l):
             runs_mgr.log_param("max_lr", max_lr)
             runs_mgr.log_param("batch_size", batch_size)
 
-            train_dl = dl(train_ds, batch_size, shuffle=True)
-            val_dl = dl(val_ds, batch_size, shuffle=True)
+            train_dl = train_ds.loader(batch_size, shuffle=True)
+            val_dl = val_ds.loader(batch_size, shuffle=True)
+            # train_dl = dl(train_ds, batch_size, shuffle=True)
+            # val_dl = dl(val_ds, batch_size, shuffle=True)
 
             runs_mgr.log_param("iters/epoch", iters_per_epoch := len(train_dl))
             runs_mgr.log_param("base_fils", base_fils)
