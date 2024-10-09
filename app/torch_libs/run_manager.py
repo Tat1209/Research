@@ -244,10 +244,13 @@ class RunViewer:
 
         return df
 
-    def fetch_results(self, fname="results.csv"):
-        try:
-            df = self.ref_results(fname)
-        except FileNotFoundError:
+    def fetch_results(self, fname="results.csv", refresh=True):
+        if refresh:
+            try:
+                df = self.ref_results(fname)
+            except FileNotFoundError:
+                df = self.read_results(fname)
+        else:
             df = self.read_results(fname)
 
         return df
